@@ -1,0 +1,814 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CentreStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+}
+
+enum ImportKind {
+  REVENUE_REPORT
+}
+
+enum ImportStatus {
+  DRAFT
+  UPLOADED
+  QUEUED
+  PROCESSING
+  NEEDS_REVIEW
+  READY_TO_COMMIT
+  FAILED
+  COMMITTED
+}
+
+enum ReportStatus {
+  COMMITTED
+  VOIDED
+}
+
+enum ChargeRunStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  POSTED
+  CANCELLED
+}
+
+enum RoundingMode {
+  HALF_UP
+  DOWN
+  UP
+}
+
+enum ReceivableStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  DISPUTED
+}
+
+enum PaymentStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  POSTED
+  REJECTED
+  REVERSED
+}
+
+enum LedgerEntryType {
+  CHARGE
+  OPENING_BALANCE
+  ADJUSTMENT_DEBIT
+  ADJUSTMENT_CREDIT
+  PAYMENT_ALLOCATION
+  REVERSAL
+}
+
+model Organization {
+  id              String             @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String             @unique
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  users           User[]
+  roles           Role[]
+  centres         Centre[]
+  refreshSessions RefreshSession[]
+  importBatches   ImportBatch[]
+  revenueReports  RevenueReport[]
+  chargeRuns      ChargeRun[]
+  receivables     Receivable[]
+  ledgerEntries   LedgerEntry[]
+  payments        Payment[]
+  auditEvents     AuditEvent[]
+  idempotencyKeys IdempotencyKey[]
+  adjustments     Adjustment[]
+  disputes        Dispute[]
+  openingBalances OpeningBalance[]
+  setupDrafts     CentreSetupDraft[]
+  approvedDomains ApprovedDomain[]
+  platformSetting PlatformSetting?
+  brandingAssets  BrandingAsset[]
+}
+
+model User {
+  id                      String               @id @default(uuid()) @db.Uuid
+  organizationId          String               @db.Uuid
+  email                   String
+  passwordHash            String
+  fullName                String
+  isActive                Boolean              @default(true)
+  mfaEnabled              Boolean              @default(false)
+  /// Authenticator secret, AES-256-GCM encrypted. Set once enrolment is confirmed.
+  mfaSecretEnc            String?
+  /// Secret shown during enrolment, kept apart until the first code is confirmed.
+  mfaPendingSecretEnc     String?
+  mfaEnrolledAt           DateTime?
+  /// Last accepted time step; a code at or before it is refused (no replay).
+  mfaLastStep             Int?
+  mfaFailedAttempts       Int                  @default(0)
+  mfaLockedUntil          DateTime?
+  setupDrafts             CentreSetupDraft[]
+  mfaRecoveryCodes        MfaRecoveryCode[]
+  lastLoginAt             DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roleAssignments         UserRoleAssignment[]
+  refreshSessions         RefreshSession[]
+  auditEvents             AuditEvent[]         @relation("ActorAudit")
+  importBatches           ImportBatch[]
+  chargeRunsCreated       ChargeRun[]          @relation("ChargeCreator")
+  chargeRunsApproved      ChargeRun[]          @relation("ChargeApprover")
+  reportsCreated          RevenueReport[]      @relation("ReportCreator")
+  reportsVarianceApproved RevenueReport[]      @relation("ReportVarianceApprover")
+  paymentsCreated         Payment[]            @relation("PaymentCreator")
+  ledgerEntries           LedgerEntry[]        @relation("LedgerCreator")
+  adjustmentsCreated      Adjustment[]         @relation("AdjustmentCreator")
+  adjustmentsDecided      Adjustment[]         @relation("AdjustmentDecider")
+  disputesRaised          Dispute[]            @relation("DisputeRaiser")
+  disputesResolved        Dispute[]            @relation("DisputeResolver")
+  openingCreated          OpeningBalance[]     @relation("OpeningCreator")
+  openingDecided          OpeningBalance[]     @relation("OpeningDecider")
+
+  @@unique([organizationId, email])
+  @@index([organizationId, isActive])
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+}
+
+enum SetupDraftStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+/// A centre being set up from an uploaded report. The file and what was read from it are kept so
+/// the wizard can be resumed and the original report can be imported once the centre exists.
+model CentreSetupDraft {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  createdById    String           @db.Uuid
+  fileName       String
+  fileHash       String
+  fileKey        String
+  contentType    String
+  analysisJson   Json
+  status         SetupDraftStatus @default(OPEN)
+  centreId       String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+  completedAt    DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status, createdAt])
+}
+
+/// An email domain whose people may sign in. Gmail is never approved here; it is reserved for super admins.
+model ApprovedDomain {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  domain         String
+  note           String?
+  isActive       Boolean      @default(true)
+  createdById    String       @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, domain])
+}
+
+/// Organisation-wide settings: the product name, support contact and outgoing email (SMTP).
+model PlatformSetting {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @unique @db.Uuid
+  appName          String       @default("HNB Receivables")
+  tagline          String?
+  supportEmail     String?
+  smtpHost         String?
+  smtpPort         Int?
+  smtpSecure       Boolean      @default(true)
+  smtpUser         String?
+  /// AES-256-GCM encrypted; never returned by the API.
+  smtpPasswordEnc  String?
+  smtpFromName     String?
+  smtpFromEmail    String?
+  smtpReplyTo      String?
+  smtpUpdatedAt    DateTime?
+  smtpUpdatedById  String?      @db.Uuid
+  smtpLastTestAt   DateTime?
+  smtpLastTestOk   Boolean?
+  smtpLastTestNote String?
+  updatedAt        DateTime     @updatedAt
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum BrandingKind {
+  LOGO
+  FAVICON
+}
+
+/// The uploaded logo and favicon, kept in the database so every instance serves the same files.
+model BrandingAsset {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  kind           BrandingKind
+  fileName       String
+  contentType    String
+  data           Bytes
+  sizeBytes      Int
+  sha256         String
+  updatedById    String       @db.Uuid
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind])
+}
+
+model Role {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  code           String
+  name           String
+  description    String?
+  isSystem       Boolean              @default(false)
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions    RolePermission[]
+  assignments    UserRoleAssignment[]
+
+  @@unique([organizationId, code])
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique
+  name        String
+  description String?
+  group       String
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRoleAssignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  roleId         String   @db.Uuid
+  centreId       String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  centre         Centre?  @relation(fields: [centreId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@index([roleId])
+  @@index([centreId])
+}
+
+model RefreshSession {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String       @db.Uuid
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  rotatedAt      DateTime?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, revokedAt])
+}
+
+model Centre {
+  id               String                @id @default(uuid()) @db.Uuid
+  organizationId   String                @db.Uuid
+  code             String
+  name             String
+  address          String?
+  contactName      String?
+  contactEmail     String?
+  status           CentreStatus          @default(DRAFT)
+  timezone         String                @default("Africa/Lagos")
+  currency         String                @default("NGN")
+  paymentTermsDays Int                   @default(30)
+  gracePeriodDays  Int                   @default(0)
+  openedAt         DateTime?             @db.Date
+  notes            String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  departments      Department[]
+  paymentChannels  PaymentChannel[]
+  agreements       CommercialAgreement[]
+  chargeRules      ChargeRule[]
+  assignments      UserRoleAssignment[]
+  importBatches    ImportBatch[]
+  reports          RevenueReport[]
+  chargeRuns       ChargeRun[]
+  receivables      Receivable[]
+  payments         Payment[]
+  ledgerEntries    LedgerEntry[]
+  auditEvents      AuditEvent[]
+  adjustments      Adjustment[]
+  disputes         Dispute[]
+  openingBalances  OpeningBalance[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+}
+
+model Department {
+  id          String            @id @default(uuid()) @db.Uuid
+  centreId    String            @db.Uuid
+  code        String
+  name        String
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  centre      Centre            @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  aliases     DepartmentAlias[]
+  rules       ChargeRule[]
+  lines       RevenueLine[]
+  chargeLines ChargeLine[]
+
+  @@unique([centreId, code])
+}
+
+model DepartmentAlias {
+  id           String     @id @default(uuid()) @db.Uuid
+  departmentId String     @db.Uuid
+  alias        String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, alias])
+}
+
+model PaymentChannel {
+  id          String                @id @default(uuid()) @db.Uuid
+  centreId    String                @db.Uuid
+  code        String
+  name        String
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  centre      Centre                @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  aliases     PaymentChannelAlias[]
+  chargeRules ChargeRule[]
+  chargeLines ChargeLine[]
+
+  @@unique([centreId, code])
+}
+
+model PaymentChannelAlias {
+  id        String         @id @default(uuid()) @db.Uuid
+  channelId String         @db.Uuid
+  alias     String
+  channel   PaymentChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, alias])
+}
+
+model CommercialAgreement {
+  id            String       @id @default(uuid()) @db.Uuid
+  centreId      String       @db.Uuid
+  name          String
+  effectiveFrom DateTime     @db.Date
+  effectiveTo   DateTime?    @db.Date
+  status        String       @default("ACTIVE")
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  centre        Centre       @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  chargeRules   ChargeRule[]
+}
+
+model ChargeRule {
+  id               String               @id @default(uuid()) @db.Uuid
+  centreId         String               @db.Uuid
+  agreementId      String?              @db.Uuid
+  departmentId     String?              @db.Uuid
+  paymentChannelId String?              @db.Uuid
+  name             String
+  basis            String               @default("PERCENTAGE")
+  rate             Decimal              @db.Decimal(9, 6)
+  effectiveFrom    DateTime             @db.Date
+  effectiveTo      DateTime?            @db.Date
+  priority         Int                  @default(0)
+  rounding         RoundingMode         @default(HALF_UP)
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  centre           Centre               @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  agreement        CommercialAgreement? @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  department       Department?          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  paymentChannel   PaymentChannel?      @relation(fields: [paymentChannelId], references: [id], onDelete: Restrict)
+  chargeLines      ChargeLine[]
+  isExempt         Boolean              @default(false)
+
+  @@index([centreId, effectiveFrom])
+  @@index([departmentId])
+  @@index([paymentChannelId])
+}
+
+model ImportBatch {
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @db.Uuid
+  centreId           String         @db.Uuid
+  kind               ImportKind     @default(REVENUE_REPORT)
+  status             ImportStatus   @default(DRAFT)
+  fileName           String?
+  fileKey            String?
+  fileHash           String?
+  contentFingerprint String?
+  periodStart        DateTime       @db.Date
+  periodEnd          DateTime       @db.Date
+  rowsJson           Json?
+  normalizedJson     Json?
+  validationJson     Json?
+  rowCount           Int            @default(0)
+  validRowCount      Int            @default(0)
+  totalAmount        Decimal?       @db.Decimal(18, 2)
+  errorMessage       String?
+  createdById        String         @db.Uuid
+  committedReportId  String?        @unique @db.Uuid
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre             Centre         @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  createdBy          User           @relation(fields: [createdById], references: [id])
+  committedReport    RevenueReport? @relation("CommittedReport", fields: [committedReportId], references: [id], onDelete: Restrict)
+  sourceReport       RevenueReport? @relation("ImportSource")
+
+  @@index([organizationId, centreId, status])
+  @@index([fileHash])
+}
+
+model RevenueReport {
+  id                   String        @id @default(uuid()) @db.Uuid
+  organizationId       String        @db.Uuid
+  centreId             String        @db.Uuid
+  periodStart          DateTime      @db.Date
+  periodEnd            DateTime      @db.Date
+  reportDate           DateTime      @db.Date
+  status               ReportStatus  @default(COMMITTED)
+  grandTotal           Decimal       @db.Decimal(18, 2)
+  channelTotal         Decimal       @db.Decimal(18, 2)
+  sourceFileName       String?
+  sourceFileHash       String?
+  contentFingerprint   String?
+  importBatchId        String?       @unique @db.Uuid
+  createdById          String        @db.Uuid
+  /// Set when the report was committed although its printed totals did not add up.
+  varianceApprovedById String?       @db.Uuid
+  varianceApprovedAt   DateTime?
+  varianceReason       String?
+  varianceJson         Json?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre               Centre        @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  createdBy            User          @relation("ReportCreator", fields: [createdById], references: [id])
+  varianceApprovedBy   User?         @relation("ReportVarianceApprover", fields: [varianceApprovedById], references: [id], onDelete: Restrict)
+  importBatch          ImportBatch?  @relation("ImportSource", fields: [importBatchId], references: [id], onDelete: Restrict)
+  committedBatch       ImportBatch?  @relation("CommittedReport")
+  lines                RevenueLine[]
+
+  @@index([organizationId, centreId, periodEnd])
+}
+
+model RevenueLine {
+  id            String        @id @default(uuid()) @db.Uuid
+  reportId      String        @db.Uuid
+  departmentId  String        @db.Uuid
+  reportedTotal Decimal       @db.Decimal(18, 2)
+  channelTotal  Decimal       @db.Decimal(18, 2)
+  variance      Decimal       @db.Decimal(18, 2)
+  amountsJson   Json
+  createdAt     DateTime      @default(now())
+  report        RevenueReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+  department    Department    @relation(fields: [departmentId], references: [id])
+  chargeLines   ChargeLine[]
+
+  @@unique([reportId, departmentId])
+}
+
+model ChargeRun {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  centreId       String          @db.Uuid
+  periodStart    DateTime        @db.Date
+  periodEnd      DateTime        @db.Date
+  asOf           DateTime        @db.Date
+  status         ChargeRunStatus @default(DRAFT)
+  baseTotal      Decimal         @default(0) @db.Decimal(18, 2)
+  chargeTotal    Decimal         @default(0) @db.Decimal(18, 2)
+  rulesSnapshot  Json?
+  createdById    String          @db.Uuid
+  submittedAt    DateTime?
+  approvedById   String?         @db.Uuid
+  approvedAt     DateTime?
+  postedAt       DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre         Centre          @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  createdBy      User            @relation("ChargeCreator", fields: [createdById], references: [id])
+  approvedBy     User?           @relation("ChargeApprover", fields: [approvedById], references: [id])
+  lines          ChargeLine[]
+  receivable     Receivable?
+
+  @@index([organizationId, centreId, status])
+}
+
+model ChargeLine {
+  id               String          @id @default(uuid()) @db.Uuid
+  chargeRunId      String          @db.Uuid
+  revenueLineId    String?         @db.Uuid
+  departmentId     String          @db.Uuid
+  paymentChannelId String?         @db.Uuid
+  ruleId           String?         @db.Uuid
+  baseAmount       Decimal         @db.Decimal(18, 2)
+  rate             Decimal         @db.Decimal(9, 6)
+  chargeAmount     Decimal         @db.Decimal(18, 2)
+  ruleName         String?
+  traceJson        Json?
+  createdAt        DateTime        @default(now())
+  chargeRun        ChargeRun       @relation(fields: [chargeRunId], references: [id], onDelete: Restrict)
+  revenueLine      RevenueLine?    @relation(fields: [revenueLineId], references: [id], onDelete: Restrict)
+  department       Department      @relation(fields: [departmentId], references: [id])
+  paymentChannel   PaymentChannel? @relation(fields: [paymentChannelId], references: [id], onDelete: Restrict)
+  rule             ChargeRule?     @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  receivable       Receivable?
+
+  @@index([chargeRunId])
+  @@index([paymentChannelId])
+}
+
+model Receivable {
+  id              String              @id @default(uuid()) @db.Uuid
+  organizationId  String              @db.Uuid
+  centreId        String              @db.Uuid
+  chargeLineId    String?             @unique @db.Uuid
+  chargeRunId     String?             @unique @db.Uuid
+  reference       String              @unique
+  description     String
+  originalAmount  Decimal             @db.Decimal(18, 2)
+  amountPaid      Decimal             @default(0) @db.Decimal(18, 2)
+  balance         Decimal             @db.Decimal(18, 2)
+  dueDate         DateTime            @db.Date
+  status          ReceivableStatus    @default(OPEN)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre          Centre              @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  chargeLine      ChargeLine?         @relation(fields: [chargeLineId], references: [id], onDelete: Restrict)
+  chargeRun       ChargeRun?          @relation(fields: [chargeRunId], references: [id], onDelete: Restrict)
+  ledgerEntries   LedgerEntry[]
+  allocations     PaymentAllocation[]
+  adjustmentTotal Decimal             @default(0) @db.Decimal(18, 2)
+  adjustments     Adjustment[]
+  disputes        Dispute[]
+  openingBalance  OpeningBalance?
+
+  @@index([organizationId, centreId, status, dueDate])
+}
+
+model LedgerEntry {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  centreId       String          @db.Uuid
+  receivableId   String          @db.Uuid
+  type           LedgerEntryType
+  debit          Decimal         @default(0) @db.Decimal(18, 2)
+  credit         Decimal         @default(0) @db.Decimal(18, 2)
+  description    String
+  occurredAt     DateTime        @default(now())
+  createdById    String          @db.Uuid
+  sourceType     String?
+  sourceId       String?         @db.Uuid
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre         Centre          @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  receivable     Receivable      @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  createdBy      User            @relation("LedgerCreator", fields: [createdById], references: [id])
+
+  @@index([organizationId, centreId, occurredAt])
+  @@index([receivableId])
+}
+
+model Payment {
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String              @db.Uuid
+  centreId          String              @db.Uuid
+  receiptDate       DateTime            @db.Date
+  amount            Decimal             @db.Decimal(18, 2)
+  unallocatedAmount Decimal             @db.Decimal(18, 2)
+  method            String
+  reference         String?
+  payerName         String?
+  notes             String?
+  evidenceKey       String?
+  status            PaymentStatus       @default(DRAFT)
+  createdById       String              @db.Uuid
+  submittedById     String?             @db.Uuid
+  submittedAt       DateTime?
+  approvedById      String?             @db.Uuid
+  approvedAt        DateTime?
+  postedById        String?             @db.Uuid
+  postedAt          DateTime?
+  rejectionReason   String?
+  reversalReason    String?
+  reversedById      String?             @db.Uuid
+  reversedAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre            Centre              @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  createdBy         User                @relation("PaymentCreator", fields: [createdById], references: [id])
+  allocations       PaymentAllocation[]
+
+  @@index([organizationId, centreId, receiptDate])
+  @@index([organizationId, centreId, status])
+  @@index([reference])
+}
+
+model PaymentAllocation {
+  id             String     @id @default(uuid()) @db.Uuid
+  paymentId      String     @db.Uuid
+  receivableId   String     @db.Uuid
+  amount         Decimal    @db.Decimal(18, 2)
+  allocatedAt    DateTime   @default(now())
+  allocatedById  String?    @db.Uuid
+  reversedAt     DateTime?
+  reversedById   String?    @db.Uuid
+  reversalReason String?
+  payment        Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  receivable     Receivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([receivableId])
+}
+
+model AuditEvent {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  centreId       String?      @db.Uuid
+  actorId        String?      @db.Uuid
+  action         String
+  targetType     String
+  targetId       String?
+  summary        String
+  before         Json?
+  after          Json?
+  correlationId  String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre         Centre?      @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  actor          User?        @relation("ActorAudit", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([centreId, createdAt])
+  @@index([targetType, targetId])
+}
+
+model IdempotencyKey {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String       @db.Uuid
+  endpoint       String
+  key            String
+  response       Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, endpoint, key])
+}
+
+enum AdjustmentType {
+  CREDIT
+  DEBIT
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DisputeStatus {
+  OPEN
+  UPHELD
+  REJECTED
+  WITHDRAWN
+}
+
+/// A credit (reduces what is owed) or debit (increases it) against one receivable. Maker-checker:
+/// approving it posts it to the ledger; the approver cannot be the creator.
+model Adjustment {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  centreId       String         @db.Uuid
+  receivableId   String         @db.Uuid
+  type           AdjustmentType
+  amount         Decimal        @db.Decimal(18, 2)
+  reasonCode     String
+  reason         String
+  status         ApprovalStatus @default(PENDING)
+  createdById    String         @db.Uuid
+  createdAt      DateTime       @default(now())
+  decidedById    String?        @db.Uuid
+  decidedAt      DateTime?
+  decisionNote   String?
+  disputeId      String?        @db.Uuid
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre         Centre         @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  receivable     Receivable     @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  createdBy      User           @relation("AdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  decidedBy      User?          @relation("AdjustmentDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, centreId, status])
+  @@index([receivableId])
+}
+
+/// A centre's challenge to part of a receivable. While open, the receivable is flagged DISPUTED.
+model Dispute {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  centreId       String        @db.Uuid
+  receivableId   String        @db.Uuid
+  amount         Decimal       @db.Decimal(18, 2)
+  reason         String
+  status         DisputeStatus @default(OPEN)
+  raisedById     String        @db.Uuid
+  raisedAt       DateTime      @default(now())
+  resolvedById   String?       @db.Uuid
+  resolvedAt     DateTime?
+  resolutionNote String?
+  adjustmentId   String?       @db.Uuid
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre         Centre        @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  receivable     Receivable    @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  raisedBy       User          @relation("DisputeRaiser", fields: [raisedById], references: [id], onDelete: Restrict)
+  resolvedBy     User?         @relation("DisputeResolver", fields: [resolvedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, centreId, status])
+  @@index([receivableId])
+}
+
+/// What a centre already owed before the platform: approved into one receivable, never overlapping
+/// periods the platform has charged itself.
+model OpeningBalance {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  centreId       String         @db.Uuid
+  asAt           DateTime       @db.Date
+  amount         Decimal        @db.Decimal(18, 2)
+  dueDate        DateTime       @db.Date
+  sourceNote     String
+  status         ApprovalStatus @default(PENDING)
+  receivableId   String?        @unique @db.Uuid
+  createdById    String         @db.Uuid
+  createdAt      DateTime       @default(now())
+  decidedById    String?        @db.Uuid
+  decidedAt      DateTime?
+  decisionNote   String?
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  centre         Centre         @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  receivable     Receivable?    @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  createdBy      User           @relation("OpeningCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  decidedBy      User?          @relation("OpeningDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, centreId, status])
+}

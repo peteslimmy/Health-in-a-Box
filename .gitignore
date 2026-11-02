@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+Frontend/dist/
+Frontend/node_modules/
+Backend/dist/
+Backend/node_modules/
+
+# Coverage reports
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Uploads and databases
+Backend/uploads/
+Backend/prisma/*.db
+
+# Logs
+*.log
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Backups
+backups-dev/
+
+# Node lock files
+package-lock.json

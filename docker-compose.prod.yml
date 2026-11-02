@@ -1,0 +1,129 @@
+# Production stack: database, private object storage, API, web. Nothing but the web container is
+# published, and only on the loopback address: put your TLS terminator (Caddy, nginx, a cloud load
+# balancer) in front of 127.0.0.1:8080 and send it the real client address (TRUST_PROXY below).
+#
+#   cp .env.production.example .env.production   # then fill in every value; none may be a placeholder
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Start-up order: db -> migrate (owner role, exits) -> grants (least-privilege role, exits) -> api -> web.
+name: hnb
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hnb_owner
+      POSTGRES_PASSWORD: ${OWNER_DB_PASSWORD:?set OWNER_DB_PASSWORD}
+      POSTGRES_DB: hnb
+    volumes:
+      - hnb_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hnb_owner -d hnb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Optional self-hosted object storage. Use it only if you have a MinIO image you trust and have
+  # pinned (set MINIO_IMAGE); the project's public images have changed, so none is hard-coded here.
+  # Otherwise leave this profile off and point MINIO_ENDPOINT at any private S3-compatible service.
+  #   docker compose ... --profile bundled-storage up -d
+  minio:
+    profiles: ["bundled-storage"]
+    image: ${MINIO_IMAGE:-pin-a-minio-image-with-MINIO_IMAGE}
+    restart: unless-stopped
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+    volumes:
+      - hnb_minio_data:/data
+
+  migrate:
+    build:
+      context: ./Backend
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://hnb_owner:${OWNER_DB_PASSWORD}@db:5432/hnb?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  grants:
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: ${OWNER_DB_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+    volumes:
+      - ./ops/db-roles.sql:/db-roles.sql:ro
+    command: ["sh", "-c", "psql -v ON_ERROR_STOP=1 -v app_password=\"$$APP_DB_PASSWORD\" -h db -U hnb_owner -d hnb -f /db-roles.sql"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # First-time set-up only: creates the organisation, roles and ONE administrator (no demo data).
+  #   BOOTSTRAP_ORG_NAME="..." BOOTSTRAP_ADMIN_EMAIL=... BOOTSTRAP_ADMIN_NAME="..." \
+  #   BOOTSTRAP_ADMIN_PASSWORD='...' docker compose -f docker-compose.prod.yml --env-file .env.production \
+  #   --profile setup run --rm bootstrap
+  bootstrap:
+    profiles: ["setup"]
+    build:
+      context: ./Backend
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://hnb_owner:${OWNER_DB_PASSWORD}@db:5432/hnb?schema=public
+      BOOTSTRAP_ORG_NAME: ${BOOTSTRAP_ORG_NAME:-}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    command: ["npx", "ts-node", "prisma/bootstrap.ts"]
+    depends_on:
+      grants:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    build:
+      context: ./Backend
+      target: runtime
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://hnb_app:${APP_DB_PASSWORD}@db:5432/hnb?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set MFA_ENCRYPTION_KEY}
+      MFA_ENFORCEMENT: ${MFA_ENFORCEMENT:-privileged}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      COOKIE_SECURE: "true"
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?set FRONTEND_ORIGIN}
+      # Two proxies in front of the API: your TLS terminator, then the web container.
+      TRUST_PROXY: "2"
+      STORAGE_DRIVER: minio
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-hnb-private}
+    depends_on:
+      grants:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ./Frontend
+      target: runtime
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - api
+
+volumes:
+  hnb_postgres_data:
+  hnb_minio_data:

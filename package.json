@@ -1,0 +1,19 @@
+{
+  "name": "hnb-receivables-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HNB-Receivables Management Platform",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm --prefix Backend run start:dev\" \"npm --prefix Frontend run dev\"",
+    "build": "npm --prefix Backend run build && npm --prefix Frontend run build",
+    "typecheck": "npm --prefix Backend run typecheck && npm --prefix Frontend run typecheck",
+    "test": "npm --prefix Backend run test && npm --prefix Frontend run test",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:migrate": "npm --prefix Backend run prisma:migrate",
+    "db:seed": "npm --prefix Backend run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,73 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hnb
+          POSTGRES_PASSWORD: hnb_ci_password
+          POSTGRES_DB: hnb_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hnb -d hnb_ci_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hnb:hnb_ci_password@localhost:5432/hnb_ci_test?schema=public
+      TEST_DATABASE_URL: postgresql://hnb:hnb_ci_password@localhost:5432/hnb_ci_test?schema=public
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: Backend/package-lock.json }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npx tsc --noEmit
+      - run: npx eslint src
+      # Includes the database suites: concurrency, ledger, constraints and the authorization matrix.
+      - run: npx jest --runInBand
+      - run: npm run build
+      - name: Dependency audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high || echo "::warning::see HNBdocs/22 for accepted advisories"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: Frontend/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  images:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target runtime -t hnb-api ./Backend
+      - run: docker build --target migrate -t hnb-migrate ./Backend
+      - run: docker build --target runtime -t hnb-web ./Frontend
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
