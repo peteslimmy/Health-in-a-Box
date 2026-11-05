@@ -22,7 +22,7 @@ export class ReportQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ example: '2026-10-01' })
   @IsOptional()
@@ -60,7 +60,7 @@ export class ReportExportQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

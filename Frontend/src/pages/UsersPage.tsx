@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useUser } from '../auth/AuthContext';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { PasswordInput } from '../components/PasswordInput';
 import { Button, Card, EmptyState, ErrorNotice, Field, Input, Loading, Modal, Notice, PageHeader, Pagination, Select, StatusBadge, Table, Td, Th } from '../components/ui';
 import { api } from '../lib/api';
@@ -9,7 +9,7 @@ import { formatDateTime } from '../lib/format';
 import { can } from '../lib/permissions';
 import type { AdminUser, Page, Role } from '../lib/types';
 
-type Assignment = { roleId: string; centreId: string };
+type Assignment = { roleId: string; hospitalId: string };
 
 function AssignmentEditor({ value, onChange, roles }: { value: Assignment[]; onChange: (value: Assignment[]) => void; roles: Role[] }) {
   return (
@@ -20,17 +20,17 @@ function AssignmentEditor({ value, onChange, roles }: { value: Assignment[]; onC
             <option value="">Select a role…</option>
             {roles.filter((role) => role.isActive).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
           </Select>
-          <CentreSelect allowAll value={assignment.centreId} onChange={(centreId) => onChange(value.map((item, i) => (i === index ? { ...item, centreId } : item)))} />
+          <HospitalSelect allowAll value={assignment.hospitalId} onChange={(hospitalId) => onChange(value.map((item, i) => (i === index ? { ...item, hospitalId } : item)))} />
           <Button variant="ghost" onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove</Button>
         </div>
       ))}
-      <Button variant="secondary" onClick={() => onChange([...value, { roleId: '', centreId: '' }])}>Add role</Button>
-      <p className="text-xs text-slate-500">“All centres” gives the role access to every centre. Each role applies only to the centre chosen beside it.</p>
+      <Button variant="secondary" onClick={() => onChange([...value, { roleId: '', hospitalId: '' }])}>Add role</Button>
+      <p className="text-xs text-slate-500">“All hospitals” gives the role access to every hospital. Each role applies only to the hospital chosen beside it.</p>
     </div>
   );
 }
 
-const toBody = (assignments: Assignment[]) => assignments.filter((a) => a.roleId).map((a) => ({ roleId: a.roleId, ...(a.centreId && { centreId: a.centreId }) }));
+const toBody = (assignments: Assignment[]) => assignments.filter((a) => a.roleId).map((a) => ({ roleId: a.roleId, ...(a.hospitalId && { hospitalId: a.hospitalId }) }));
 
 export function UsersPage() {
   const me = useUser();
@@ -39,7 +39,7 @@ export function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [resetting, setResetting] = useState<AdminUser | null>(null);
-  const [form, setForm] = useState({ email: '', fullName: '', password: '', assignments: [{ roleId: '', centreId: '' }] as Assignment[] });
+  const [form, setForm] = useState({ email: '', fullName: '', password: '', assignments: [{ roleId: '', hospitalId: '' }] as Assignment[] });
   const [editAssignments, setEditAssignments] = useState<Assignment[]>([]);
   const [newPassword, setNewPassword] = useState('');
   const [resettingMfa, setResettingMfa] = useState<AdminUser | null>(null);
@@ -51,7 +51,7 @@ export function UsersPage() {
 
   const create = useMutation({
     mutationFn: () => api('/users', { method: 'POST', body: { email: form.email.trim(), fullName: form.fullName.trim(), password: form.password, assignments: toBody(form.assignments) } }),
-    onSuccess: () => { setCreating(false); setForm({ email: '', fullName: '', password: '', assignments: [{ roleId: '', centreId: '' }] }); refresh(); },
+    onSuccess: () => { setCreating(false); setForm({ email: '', fullName: '', password: '', assignments: [{ roleId: '', hospitalId: '' }] }); refresh(); },
   });
   const toggle = useMutation({ mutationFn: (user: AdminUser) => api(`/users/${user.id}`, { method: 'PATCH', body: { isActive: !user.isActive } }), onSuccess: refresh });
   const saveAssignments = useMutation({
@@ -71,7 +71,7 @@ export function UsersPage() {
     <div>
       <PageHeader
         title="Users"
-        subtitle="Access comes from roles, each applied to all centres or to one centre. You can only grant permissions you hold yourself, and you cannot change your own access."
+        subtitle="Access comes from roles, each applied to all hospitals or to one hospital. You can only grant permissions you hold yourself, and you cannot change your own access."
         actions={canManage && <Button onClick={() => setCreating(true)}>Add user</Button>}
       />
       <Card>
@@ -87,14 +87,14 @@ export function UsersPage() {
                   <tr key={user.id}>
                     <Td className="font-medium">{user.fullName}</Td>
                     <Td>{user.email}</Td>
-                    <Td>{user.roleAssignments.map((a) => `${a.role.name}${a.centre ? ` (${a.centre.code})` : ' (all centres)'}`).join('; ') || '—'}</Td>
+                    <Td>{user.roleAssignments.map((a) => `${a.role.name}${a.hospital ? ` (${a.hospital.code})` : ' (all hospitals)'}`).join('; ') || '—'}</Td>
                     <Td><StatusBadge status={user.isActive ? 'ACTIVE' : 'SUSPENDED'} /></Td>
                     <Td>{user.mfaEnabled ? 'On' : 'Off'}</Td>
                     <Td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</Td>
                     <Td className="whitespace-nowrap">
                       {canManage && user.id !== me.id && (
                         <>
-                          <Button variant="ghost" onClick={() => { setEditing(user); setEditAssignments(user.roleAssignments.map((a) => ({ roleId: a.role.id, centreId: a.centre?.id ?? '' }))); }}>Roles</Button>
+                          <Button variant="ghost" onClick={() => { setEditing(user); setEditAssignments(user.roleAssignments.map((a) => ({ roleId: a.role.id, hospitalId: a.hospital?.id ?? '' }))); }}>Roles</Button>
                           <Button variant="ghost" onClick={() => toggle.mutate(user)}>{user.isActive ? 'Deactivate' : 'Activate'}</Button>
                           <Button variant="ghost" onClick={() => setResetting(user)}>Reset password</Button>
                           {user.mfaEnabled && <Button variant="ghost" onClick={() => setResettingMfa(user)}>Reset 2-step</Button>}

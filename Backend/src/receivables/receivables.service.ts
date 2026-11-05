@@ -6,11 +6,11 @@ import { AGEING_BUCKETS, AgeingBucket, ageingBucket, daysOverdue } from '../comm
 import { dateInTimeZone, dateOnly, parseDate } from '../common/utils/dates';
 import { moneyString } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgeingQueryDto, ReceivableQueryDto } from './dto/receivable.dto';
 
-/** D-016 default business time zone, used when no centre-specific date is involved. */
+/** D-016 default business time zone, used when no hospital-specific date is involved. */
 const DEFAULT_TIME_ZONE = 'Africa/Lagos';
 
 const dec = (value: { toString(): string }) => new Decimal(value.toString());
@@ -22,7 +22,7 @@ export class ReceivablesService {
   private scope(user: AuthUser): Prisma.ReceivableWhereInput {
     return {
       organizationId: user.organizationId,
-      ...(user.allCentres ? {} : { centreId: { in: user.centreIds } }),
+      ...(user.allHospitals ? {} : { hospitalId: { in: user.hospitalIds } }),
     };
   }
 
@@ -32,11 +32,11 @@ export class ReceivablesService {
 
   async list(user: AuthUser, query: ReceivableQueryDto) {
     const { page, pageSize, skip, take } = pagination(query);
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const asAt = this.asAt(query.asAt);
     const where: Prisma.ReceivableWhereInput = {
       ...this.scope(user),
-      ...(query.centreId ? { centreId: query.centreId } : {}),
+      ...(query.hospitalId ? { hospitalId: query.hospitalId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.openOnly || query.overdueOnly ? { balance: { gt: 0 } } : {}),
       ...(query.overdueOnly ? { dueDate: { lt: asAt } } : {}),
@@ -55,7 +55,7 @@ export class ReceivablesService {
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
         skip,
         take,
-        include: { centre: { select: { id: true, code: true, name: true } } },
+        include: { hospital: { select: { id: true, code: true, name: true } } },
       }),
       this.prisma.receivable.count({ where }),
     ]);
@@ -80,7 +80,7 @@ export class ReceivablesService {
     const receivable = await this.prisma.receivable.findFirst({
       where: { id, ...this.scope(user) },
       include: {
-        centre: { select: { id: true, code: true, name: true } },
+        hospital: { select: { id: true, code: true, name: true } },
         ledgerEntries: { orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }] },
         allocations: {
           orderBy: { allocatedAt: 'asc' },
@@ -90,7 +90,7 @@ export class ReceivablesService {
       },
     });
     if (!receivable) throw new NotFoundException('Receivable not found');
-    assertCentreAccess(user, receivable.centreId);
+    assertHospitalAccess(user, receivable.hospitalId);
 
     const debit = receivable.ledgerEntries.reduce(
       (sum, e) => sum.plus(dec(e.debit)),
@@ -117,26 +117,26 @@ export class ReceivablesService {
     };
   }
 
-  /** Open receivables per ageing bucket, per centre and in total, as at a date (RPT-004). */
+  /** Open receivables per ageing bucket, per hospital and in total, as at a date (RPT-004). */
   async ageing(user: AuthUser, query: AgeingQueryDto) {
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const asAt = this.asAt(query.asAt);
-    // Aggregate in the database by (centre, due date): the number of rows returned is bounded by
+    // Aggregate in the database by (hospital, due date): the number of rows returned is bounded by
     // the number of distinct due dates, not by the number of receivables.
     const groups = await this.prisma.receivable.groupBy({
-      by: ['centreId', 'dueDate'],
+      by: ['hospitalId', 'dueDate'],
       where: {
         ...this.scope(user),
-        ...(query.centreId ? { centreId: query.centreId } : {}),
+        ...(query.hospitalId ? { hospitalId: query.hospitalId } : {}),
         balance: { gt: 0 },
       },
       _sum: { balance: true },
     });
-    const centres = await this.prisma.centre.findMany({
-      where: { id: { in: [...new Set(groups.map((group) => group.centreId))] } },
+    const hospitals = await this.prisma.hospital.findMany({
+      where: { id: { in: [...new Set(groups.map((group) => group.hospitalId))] } },
       select: { id: true, code: true, name: true },
     });
-    const centreById = new Map(centres.map((centre) => [centre.id, centre]));
+    const hospitalById = new Map(hospitals.map((hospital) => [hospital.id, hospital]));
     type Totals = Record<AgeingBucket, Decimal>;
     const empty = (): Totals =>
       ({
@@ -144,19 +144,19 @@ export class ReceivablesService {
         ...Object.fromEntries(AGEING_BUCKETS.map((b) => [b, new Decimal(0)])),
       }) as Totals;
     const total = empty();
-    const byCentre = new Map<string, { code: string; name: string; buckets: Totals }>();
+    const byHospital = new Map<string, { code: string; name: string; buckets: Totals }>();
     for (const group of groups) {
       const amount = dec(group._sum.balance ?? 0);
       const bucket = ageingBucket(group.dueDate, asAt, amount);
       total[bucket] = total[bucket].plus(amount);
-      const centre = centreById.get(group.centreId);
-      const entry = byCentre.get(group.centreId) ?? {
-        code: centre?.code ?? group.centreId,
-        name: centre?.name ?? '',
+      const hospital = hospitalById.get(group.hospitalId);
+      const entry = byHospital.get(group.hospitalId) ?? {
+        code: hospital?.code ?? group.hospitalId,
+        name: hospital?.name ?? '',
         buckets: empty(),
       };
       entry.buckets[bucket] = entry.buckets[bucket].plus(amount);
-      byCentre.set(group.centreId, entry);
+      byHospital.set(group.hospitalId, entry);
     }
     const format = (totals: Totals): Record<string, string> => ({
       ...Object.fromEntries(AGEING_BUCKETS.map((b) => [b, moneyString(totals[b])])),
@@ -172,8 +172,8 @@ export class ReceivablesService {
       asAt: dateOnly(asAt),
       currency: 'NGN',
       total: format(total),
-      centres: [...byCentre.entries()].map(([centreId, value]) => ({
-        centreId,
+      hospitals: [...byHospital.entries()].map(([hospitalId, value]) => ({
+        hospitalId,
         code: value.code,
         name: value.name,
         ...format(value.buckets),

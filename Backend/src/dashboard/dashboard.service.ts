@@ -4,7 +4,7 @@ import { Decimal } from 'decimal.js';
 import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone, dateOnly, parseDate } from '../common/utils/dates';
 import { moneyString } from '../common/utils/money';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   DEFAULT_COLLECTION_WINDOW_DAYS,
@@ -19,8 +19,8 @@ const DEFAULT_TIME_ZONE = 'Africa/Lagos';
 const sum = (value: { toString(): string } | null | undefined) =>
   moneyString(new Decimal(value ? value.toString() : 0));
 
-export type DashboardQuery = { centreId?: string; from?: string; to?: string };
-export type TrendQuery = { centreId?: string; months?: number };
+export type DashboardQuery = { hospitalId?: string; from?: string; to?: string };
+export type TrendQuery = { hospitalId?: string; months?: number };
 export type CollectionQuery = TrendQuery & { windowDays?: number };
 
 /**
@@ -33,7 +33,7 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async summary(user: AuthUser, query: DashboardQuery) {
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const today = dateInTimeZone(new Date(), DEFAULT_TIME_ZONE);
     const toText = query.to ?? today;
     const fromText = query.from ?? `${today.slice(0, 7)}-01`;
@@ -43,12 +43,12 @@ export class DashboardService {
     const toEndOfDay = new Date(`${toText}T23:59:59.999Z`);
 
     const org = user.organizationId;
-    const centreFilter = query.centreId
-      ? { centreId: query.centreId }
-      : user.allCentres
+    const hospitalFilter = query.hospitalId
+      ? { hospitalId: query.hospitalId }
+      : user.allHospitals
         ? {}
-        : { centreId: { in: user.centreIds } };
-    const base = { organizationId: org, ...centreFilter };
+        : { hospitalId: { in: user.hospitalIds } };
+    const base = { organizationId: org, ...hospitalFilter };
 
     const [
       reported,
@@ -66,7 +66,7 @@ export class DashboardService {
       runsApproved,
       paymentsSubmitted,
       paymentsApproved,
-      draftCentres,
+      draftHospitals,
     ] = await this.prisma.$transaction([
       this.prisma.revenueReport.aggregate({
         where: { ...base, status: 'COMMITTED', periodStart: { gte: from }, periodEnd: { lte: to } },
@@ -125,16 +125,16 @@ export class DashboardService {
       this.prisma.chargeRun.count({ where: { ...base, status: 'APPROVED' } }),
       this.prisma.payment.count({ where: { ...base, status: 'SUBMITTED' } }),
       this.prisma.payment.count({ where: { ...base, status: 'APPROVED' } }),
-      this.prisma.centre.count({
+      this.prisma.hospital.count({
         where: {
           organizationId: org,
           status: 'DRAFT',
-          ...(user.allCentres ? {} : { id: { in: user.centreIds } }),
-        } satisfies Prisma.CentreWhereInput,
+          ...(user.allHospitals ? {} : { id: { in: user.hospitalIds } }),
+        } satisfies Prisma.HospitalWhereInput,
       }),
     ]);
 
-    // The money flow for the selected period and centres: what centres reported, what is due to
+    // The money flow for the selected period and hospitals: what hospitals reported, what is due to
     // the operator, what was paid, and what is still owing (due less paid). Exact decimals.
     const expectedAmount = new Decimal(expected._sum.chargeTotal?.toString() ?? 0);
     const receivedAmount = new Decimal(received._sum.amount?.toString() ?? 0);
@@ -211,14 +211,14 @@ export class DashboardService {
         chargeRunsToPost: runsApproved,
         receiptsToApprove: paymentsSubmitted,
         receiptsToPost: paymentsApproved,
-        draftCentres,
+        draftHospitals,
       },
     };
   }
 
-  /** Monthly series for the dashboard charts. Months follow the centre time zone; balances come from the ledger. */
+  /** Monthly series for the dashboard charts. Months follow the hospital time zone; balances come from the ledger. */
   async trends(user: AuthUser, query: TrendQuery) {
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const count = Math.min(24, Math.max(3, query.months ?? 12));
     const today = dateInTimeZone(new Date(), DEFAULT_TIME_ZONE);
     const months = lastMonths(today, count);
@@ -227,11 +227,11 @@ export class DashboardService {
     const windowStartDate = `${months[0]}-01`;
 
     const org = user.organizationId;
-    const scope = query.centreId
-      ? Prisma.sql`AND "centreId" = ${query.centreId}::uuid`
-      : user.allCentres
+    const scope = query.hospitalId
+      ? Prisma.sql`AND "hospitalId" = ${query.hospitalId}::uuid`
+      : user.allHospitals
         ? Prisma.empty
-        : Prisma.sql`AND "centreId" = ANY(${user.centreIds}::uuid[])`;
+        : Prisma.sql`AND "hospitalId" = ANY(${user.hospitalIds}::uuid[])`;
     const tz = DEFAULT_TIME_ZONE;
 
     type Row = { m: string; total: Prisma.Decimal | string | null };
@@ -281,7 +281,7 @@ export class DashboardService {
    * after the due date. Allocations are counted by their Lagos calendar date; reversed ones are not.
    */
   async collection(user: AuthUser, query: CollectionQuery) {
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const count = Math.min(24, Math.max(3, query.months ?? 12));
     const windowDays = Math.min(
       120,
@@ -295,11 +295,11 @@ export class DashboardService {
       .slice(0, 10);
 
     const org = user.organizationId;
-    const scope = query.centreId
-      ? Prisma.sql`AND r."centreId" = ${query.centreId}::uuid`
-      : user.allCentres
+    const scope = query.hospitalId
+      ? Prisma.sql`AND r."hospitalId" = ${query.hospitalId}::uuid`
+      : user.allHospitals
         ? Prisma.empty
-        : Prisma.sql`AND r."centreId" = ANY(${user.centreIds}::uuid[])`;
+        : Prisma.sql`AND r."hospitalId" = ANY(${user.hospitalIds}::uuid[])`;
     const tz = DEFAULT_TIME_ZONE;
 
     const rows = await this.prisma.$queryRaw<
@@ -344,15 +344,15 @@ export class DashboardService {
     };
   }
 
-  /** Centres that have not reported within 7 days (D-203), with when each last reported. */
-  async reportingStatus(user: AuthUser, query: { centreId?: string }) {
+  /** Hospitals that have not reported within 7 days (D-203), with when each last reported. */
+  async reportingStatus(user: AuthUser, query: { hospitalId?: string }) {
     const today = dateInTimeZone(new Date(), DEFAULT_TIME_ZONE);
-    const centres = await loadReportingStatus(this.prisma, user, today, query.centreId);
+    const hospitals = await loadReportingStatus(this.prisma, user, today, query.hospitalId);
     return {
       asAt: today,
       lateAfterDays: LATE_AFTER_DAYS,
-      lateCount: centres.filter((centre) => centre.late).length,
-      centres,
+      lateCount: hospitals.filter((hospital) => hospital.late).length,
+      hospitals,
     };
   }
 }

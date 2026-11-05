@@ -6,10 +6,10 @@ import { can } from './lib/permissions';
 import { Loading } from './components/ui';
 import { AdjustmentsPage } from './pages/AdjustmentsPage';
 import { AuditPage } from './pages/AuditPage';
-import { CentreDetailPage } from './pages/CentreDetailPage';
-import { CentreFormPage } from './pages/CentreFormPage';
-import { CentreSetupWizardPage } from './pages/CentreSetupWizardPage';
-import { CentresPage } from './pages/CentresPage';
+import { HospitalDetailPage } from './pages/HospitalDetailPage';
+import { HospitalFormPage } from './pages/HospitalFormPage';
+import { HospitalSetupWizardPage } from './pages/HospitalSetupWizardPage';
+import { HospitalsPage } from './pages/HospitalsPage';
 import { ChargeRunDetailPage } from './pages/ChargeRunDetailPage';
 import { ChargeRunNewPage } from './pages/ChargeRunNewPage';
 import { ChargeRunsPage } from './pages/ChargeRunsPage';
@@ -75,34 +75,34 @@ export function App() {
           }
         />
         <Route
-          path="centres"
+          path="hospitals"
           element={
-            <RequirePermission permission="centres.read">
-              <CentresPage />
+            <RequirePermission permission="hospitals.read">
+              <HospitalsPage />
             </RequirePermission>
           }
         />
         <Route
-          path="centres/setup"
+          path="hospitals/setup"
           element={
-            <RequirePermission permission="centres.onboard">
-              <CentreSetupWizardPage />
+            <RequirePermission permission="hospitals.onboard">
+              <HospitalSetupWizardPage />
             </RequirePermission>
           }
         />
         <Route
-          path="centres/new"
+          path="hospitals/new"
           element={
-            <RequirePermission permission="centres.create">
-              <CentreFormPage />
+            <RequirePermission permission="hospitals.create">
+              <HospitalFormPage />
             </RequirePermission>
           }
         />
         <Route
-          path="centres/:id"
+          path="hospitals/:id"
           element={
-            <RequirePermission permission="centres.read">
-              <CentreDetailPage />
+            <RequirePermission permission="hospitals.read">
+              <HospitalDetailPage />
             </RequirePermission>
           }
         />

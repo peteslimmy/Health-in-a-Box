@@ -1,6 +1,6 @@
 /**
  * First-time set-up for a real (production) environment: the organisation, the permissions, the
- * system roles and ONE administrator. It creates no demo data and no centres.
+ * system roles and ONE administrator. It creates no demo data and no hospitals.
  *
  *   BOOTSTRAP_ORG_NAME="University of Abuja Teaching Hospital" \
  *   BOOTSTRAP_ADMIN_EMAIL=admin@example.org BOOTSTRAP_ADMIN_NAME="Full Name" \
@@ -125,7 +125,7 @@ async function main() {
       organizationId: org.id,
       userId: user.id,
       roleId: roleIds.get('SUPER_ADMIN')!,
-      centreId: null,
+      hospitalId: null,
     },
   });
   console.log(

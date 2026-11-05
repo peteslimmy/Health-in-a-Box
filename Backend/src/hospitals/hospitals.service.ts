@@ -4,30 +4,31 @@ import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
 import { parseDate } from '../common/utils/dates';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
+import { assertSuperAdmin } from '../common/utils/super-admin';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  CentreQueryDto,
-  CreateCentreDto,
+  HospitalQueryDto,
+  CreateHospitalDto,
   DepartmentDto,
   PaymentChannelDto,
-  UpdateCentreDto,
+  UpdateHospitalDto,
   UpdateDepartmentDto,
   UpdatePaymentChannelDto,
-} from './dto/centre.dto';
+} from './dto/hospital.dto';
 
 @Injectable()
-export class CentresService {
+export class HospitalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
 
-  async list(user: AuthUser, query: CentreQueryDto) {
+  async list(user: AuthUser, query: HospitalQueryDto) {
     const { page, pageSize, skip, take } = pagination(query);
-    const where: Prisma.CentreWhereInput = {
+    const where: Prisma.HospitalWhereInput = {
       organizationId: user.organizationId,
-      ...(user.allCentres ? {} : { id: { in: user.centreIds } }),
+      ...(user.allHospitals ? {} : { id: { in: user.hospitalIds } }),
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
@@ -40,7 +41,7 @@ export class CentresService {
     };
 
     const [items, total] = await this.prisma.$transaction([
-      this.prisma.centre.findMany({
+      this.prisma.hospital.findMany({
         where,
         orderBy: { code: 'asc' },
         skip,
@@ -49,16 +50,16 @@ export class CentresService {
           _count: { select: { departments: true, paymentChannels: true, receivables: true } },
         },
       }),
-      this.prisma.centre.count({ where }),
+      this.prisma.hospital.count({ where }),
     ]);
     return paged(items, total, page, pageSize);
   }
 
   async get(user: AuthUser, id: string) {
-    const centre = await this.prisma.centre.findFirst({
+    const hospital = await this.prisma.hospital.findFirst({
       // Match the requested id exactly, then check scope separately. (Spreading a scope filter
       // that also uses the `id` key would silently replace the requested id and return, or let
-      // the caller modify, a different centre.)
+      // the caller modify, a different hospital.)
       where: { id, organizationId: user.organizationId },
       include: {
         departments: { orderBy: { code: 'asc' }, include: { aliases: true } },
@@ -71,20 +72,20 @@ export class CentresService {
         },
       },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    assertCentreAccess(user, centre.id);
-    return centre;
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    assertHospitalAccess(user, hospital.id);
+    return hospital;
   }
 
-  async create(user: AuthUser, dto: CreateCentreDto) {
-    // A new centre is an organisation-level resource, so it needs all-centres access.
-    if (!user.allCentres) {
+  async create(user: AuthUser, dto: CreateHospitalDto) {
+    assertSuperAdmin(user);
+    if (!user.allHospitals) {
       throw new ForbiddenException({
-        code: 'ALL_CENTRES_REQUIRED',
-        message: 'Only users with access to all centres can create a centre',
+        code: 'ALL_HOSPITALS_REQUIRED',
+        message: 'Only a super admin with access to all hospitals can create hospitals',
       });
     }
-    const centre = await this.prisma.centre.create({
+    const hospital = await this.prisma.hospital.create({
       data: {
         organizationId: user.organizationId,
         code: dto.code.trim().toUpperCase(),
@@ -104,19 +105,20 @@ export class CentresService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: centre.id,
-      action: 'CENTRE_CREATED',
-      targetType: 'Centre',
-      targetId: centre.id,
-      summary: `Created centre ${centre.code}`,
-      after: { code: centre.code, name: centre.name, status: centre.status },
+      hospitalId: hospital.id,
+      action: 'HOSPITAL_CREATED',
+      targetType: 'Hospital',
+      targetId: hospital.id,
+      summary: `Created hospital ${hospital.code}`,
+      after: { code: hospital.code, name: hospital.name, status: hospital.status },
     });
-    return centre;
+    return hospital;
   }
 
-  async update(user: AuthUser, id: string, dto: UpdateCentreDto) {
+  async update(user: AuthUser, id: string, dto: UpdateHospitalDto) {
+    assertSuperAdmin(user);
     const existing = await this.get(user, id);
-    const data: Prisma.CentreUpdateInput = {
+    const data: Prisma.HospitalUpdateInput = {
       ...(dto.code ? { code: dto.code.trim().toUpperCase() } : {}),
       ...(dto.name ? { name: dto.name.trim() } : {}),
       ...(dto.address !== undefined ? { address: dto.address } : {}),
@@ -134,27 +136,28 @@ export class CentresService {
     };
     if (Object.keys(data).length === 0) return existing;
 
-    const centre = await this.prisma.centre.update({ where: { id }, data });
+    const hospital = await this.prisma.hospital.update({ where: { id }, data });
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: id,
-      action: 'CENTRE_UPDATED',
-      targetType: 'Centre',
+      hospitalId: id,
+      action: 'HOSPITAL_UPDATED',
+      targetType: 'Hospital',
       targetId: id,
-      summary: `Updated centre ${centre.code}`,
+      summary: `Updated hospital ${hospital.code}`,
       before: { code: existing.code, name: existing.name, status: existing.status },
-      after: { code: centre.code, name: centre.name, status: centre.status },
+      after: { code: hospital.code, name: hospital.name, status: hospital.status },
     });
-    return centre;
+    return hospital;
   }
 
-  async addDepartment(user: AuthUser, centreId: string, dto: DepartmentDto) {
-    await this.get(user, centreId);
+  async addDepartment(user: AuthUser, hospitalId: string, dto: DepartmentDto) {
+    assertSuperAdmin(user);
+    await this.get(user, hospitalId);
     const aliases = this.cleanAliases(dto.aliases);
     const department = await this.prisma.department.create({
       data: {
-        centreId,
+        hospitalId,
         code: dto.code.trim().toUpperCase(),
         name: dto.name.trim(),
         aliases: aliases.length ? { create: aliases.map((alias) => ({ alias })) } : undefined,
@@ -164,7 +167,7 @@ export class CentresService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId,
+      hospitalId,
       action: 'DEPARTMENT_CREATED',
       targetType: 'Department',
       targetId: department.id,
@@ -176,13 +179,14 @@ export class CentresService {
 
   async updateDepartment(
     user: AuthUser,
-    centreId: string,
+    hospitalId: string,
     departmentId: string,
     dto: UpdateDepartmentDto,
   ) {
-    await this.get(user, centreId);
+    assertSuperAdmin(user);
+    await this.get(user, hospitalId);
     const existing = await this.prisma.department.findFirst({
-      where: { id: departmentId, centreId },
+      where: { id: departmentId, hospitalId },
       include: { aliases: true },
     });
     if (!existing) throw new NotFoundException('Department not found');
@@ -206,7 +210,7 @@ export class CentresService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId,
+      hospitalId,
       action: 'DEPARTMENT_UPDATED',
       targetType: 'Department',
       targetId: departmentId,
@@ -217,12 +221,13 @@ export class CentresService {
     return department;
   }
 
-  async addChannel(user: AuthUser, centreId: string, dto: PaymentChannelDto) {
-    await this.get(user, centreId);
+  async addChannel(user: AuthUser, hospitalId: string, dto: PaymentChannelDto) {
+    assertSuperAdmin(user);
+    await this.get(user, hospitalId);
     const aliases = this.cleanAliases(dto.aliases);
     const channel = await this.prisma.paymentChannel.create({
       data: {
-        centreId,
+        hospitalId,
         code: dto.code.trim().toUpperCase(),
         name: dto.name.trim(),
         aliases: aliases.length ? { create: aliases.map((alias) => ({ alias })) } : undefined,
@@ -232,7 +237,7 @@ export class CentresService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId,
+      hospitalId,
       action: 'PAYMENT_CHANNEL_CREATED',
       targetType: 'PaymentChannel',
       targetId: channel.id,
@@ -244,13 +249,14 @@ export class CentresService {
 
   async updateChannel(
     user: AuthUser,
-    centreId: string,
+    hospitalId: string,
     channelId: string,
     dto: UpdatePaymentChannelDto,
   ) {
-    await this.get(user, centreId);
+    assertSuperAdmin(user);
+    await this.get(user, hospitalId);
     const existing = await this.prisma.paymentChannel.findFirst({
-      where: { id: channelId, centreId },
+      where: { id: channelId, hospitalId },
     });
     if (!existing) throw new NotFoundException('Payment channel not found');
     const aliases = this.cleanAliases(dto.aliases);
@@ -273,7 +279,7 @@ export class CentresService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId,
+      hospitalId,
       action: 'PAYMENT_CHANNEL_UPDATED',
       targetType: 'PaymentChannel',
       targetId: channelId,

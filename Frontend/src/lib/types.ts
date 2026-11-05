@@ -3,10 +3,10 @@ export type Page<T> = {
   meta: { page: number; pageSize: number; total: number; totalPages: number };
 };
 
-export type CentreRef = { id: string; code: string; name: string };
+export type HospitalRef = { id: string; code: string; name: string };
 export type UserRef = { id: string; fullName: string; email?: string };
 
-export type Centre = CentreRef & {
+export type Hospital = HospitalRef & {
   status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED';
   address?: string | null;
   contactName?: string | null;
@@ -45,7 +45,7 @@ export type ChargeRule = {
   paymentChannel: { id: string; code: string; name: string } | null;
 };
 
-export type CentreDetail = Centre & {
+export type HospitalDetail = Hospital & {
   departments: Department[];
   paymentChannels: Channel[];
   agreements: Agreement[];
@@ -74,7 +74,7 @@ export type ImportBatch = {
   createdAt: string;
   createdById?: string;
   committedReportId: string | null;
-  centre: CentreRef;
+  hospital: HospitalRef;
   createdBy: UserRef;
 };
 
@@ -150,7 +150,7 @@ export type ChargeRun = {
   createdById: string;
   approvedById: string | null;
   postedAt: string | null;
-  centre: CentreRef & { currency?: string };
+  hospital: HospitalRef & { currency?: string };
   createdBy?: UserRef;
   approvedBy?: UserRef | null;
   lines: Array<ChargeLine & { receivable?: { id: string; reference: string; status: string } | null }>;
@@ -158,7 +158,7 @@ export type ChargeRun = {
 };
 
 export type ChargePreview = {
-  centre: CentreRef;
+  hospital: HospitalRef;
   periodStart: string;
   periodEnd: string;
   baseTotal: string;
@@ -180,7 +180,7 @@ export type Receivable = {
   ageingBucket: string;
   daysOverdue: number;
   asAt: string;
-  centre: CentreRef;
+  hospital: HospitalRef;
 };
 
 export type LedgerEntry = {
@@ -208,7 +208,7 @@ export type ReceivableDetail = Receivable & {
 export type AgeingSummary = {
   asAt: string;
   total: Record<string, string>;
-  centres: Array<Record<string, string> & { centreId: string; code: string; name: string }>;
+  hospitals: Array<Record<string, string> & { hospitalId: string; code: string; name: string }>;
 };
 
 export type PaymentStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'POSTED' | 'REJECTED' | 'REVERSED';
@@ -226,7 +226,7 @@ export type Payment = {
   rejectionReason: string | null;
   reversalReason: string | null;
   createdById: string;
-  centre: CentreRef & { status?: string };
+  hospital: HospitalRef & { status?: string };
   createdBy?: UserRef;
 };
 
@@ -280,7 +280,7 @@ export type AuditEvent = {
   correlationId: string | null;
   createdAt: string;
   actor: UserRef | null;
-  centre: CentreRef | null;
+  hospital: HospitalRef | null;
 };
 
 export type Role = {
@@ -303,7 +303,7 @@ export type AdminUser = {
   roleAssignments: Array<{
     id: string;
     role: { id: string; code: string; name: string };
-    centre: CentreRef | null;
+    hospital: HospitalRef | null;
   }>;
 };
 
@@ -329,8 +329,8 @@ export type ReportSummary = {
   description: string;
   category: string;
   dateBasis: string | null;
-  filters: Array<'centreId' | 'from' | 'to' | 'status'>;
-  requiresCentre?: boolean;
+  filters: Array<'hospitalId' | 'from' | 'to' | 'status'>;
+  requiresHospital?: boolean;
   statuses: string[] | null;
   canExport: boolean;
 };
@@ -355,14 +355,14 @@ export type CollectionPoint = {
 export type DashboardCollection = { windowDays: number; asAt: string; series: CollectionPoint[] };
 
 export type ReportingStatusEntry = {
-  centreId: string;
+  hospitalId: string;
   code: string;
   name: string;
   lastReportEnd: string | null;
   daysSince: number | null;
   late: boolean;
 };
-export type ReportingStatusResponse = { asAt: string; lateAfterDays: number; lateCount: number; centres: ReportingStatusEntry[] };
+export type ReportingStatusResponse = { asAt: string; lateAfterDays: number; lateCount: number; hospitals: ReportingStatusEntry[] };
 
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
@@ -376,7 +376,7 @@ export type AdjustmentItem = {
   createdAt: string;
   decidedAt: string | null;
   decisionNote: string | null;
-  centre: CentreRef;
+  hospital: HospitalRef;
   receivable: { id: string; reference: string; balance: string };
   createdBy: UserRef;
   decidedBy: UserRef | null;
@@ -391,7 +391,7 @@ export type DisputeItem = {
   resolvedAt: string | null;
   resolutionNote: string | null;
   adjustmentId: string | null;
-  centre: CentreRef;
+  hospital: HospitalRef;
   receivable: { id: string; reference: string; balance: string };
   raisedBy: UserRef;
   resolvedBy: UserRef | null;
@@ -406,7 +406,7 @@ export type OpeningBalanceItem = {
   status: ApprovalStatus;
   createdAt: string;
   decisionNote: string | null;
-  centre: CentreRef;
+  hospital: HospitalRef;
   receivable: { id: string; reference: string } | null;
   createdBy: UserRef;
   decidedBy: UserRef | null;
@@ -417,7 +417,7 @@ export type WorkItem = {
   kind: string;
   action: string;
   title: string;
-  centre: string | null;
+  hospital: string | null;
   ageDays: number;
   severity: 'info' | 'attention' | 'urgent';
   link: string;
@@ -431,7 +431,7 @@ export type InsightItem = {
   title: string;
   detail: string;
   evidence: Array<{ label: string; value: string }>;
-  centreId: string | null;
+  hospitalId: string | null;
   link: string;
 };
 export type InsightsResponse = { asAt: string; comparedMonths: { previous: string; latest: string }; count: number; items: InsightItem[] };

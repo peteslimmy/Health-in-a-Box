@@ -20,11 +20,11 @@ import {
 } from 'class-validator';
 import { IsIanaTimeZone } from '../../common/validators/iana-time-zone';
 
-export class SetupCentreDto {
+export class SetupHospitalDto {
   @ApiProperty({ example: 'UATH' })
   @IsString()
   @Matches(/^[A-Za-z0-9][A-Za-z0-9_-]{1,19}$/, {
-    message: 'The centre code must be 2 to 20 letters, digits, dashes or underscores',
+    message: 'The hospital code must be 2 to 20 letters, digits, dashes or underscores',
   })
   code!: string;
 
@@ -114,8 +114,8 @@ export class SetupTermsDto {
 
 export class CommitSetupDto {
   @ValidateNested()
-  @Type(() => SetupCentreDto)
-  centre!: SetupCentreDto;
+  @Type(() => SetupHospitalDto)
+  hospital!: SetupHospitalDto;
 
   @IsArray()
   @ArrayMinSize(1)
@@ -137,7 +137,7 @@ export class CommitSetupDto {
   @Type(() => SetupTermsDto)
   terms?: SetupTermsDto;
 
-  @ApiPropertyOptional({ description: 'Open the centre for imports and charging (needs terms)' })
+  @ApiPropertyOptional({ description: 'Open the hospital for imports and charging (needs terms)' })
   @IsOptional()
   @IsBoolean()
   activate?: boolean;

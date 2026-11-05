@@ -68,7 +68,7 @@ describe('rule selection', () => {
     });
   });
 
-  describe('precedence: dept+channel > dept > channel > centre default (D-002)', () => {
+  describe('precedence: dept+channel > dept > channel > hospital default (D-002)', () => {
     const def = rule('default', '2026-01-01', null);
     const channel = rule('channel', '2026-01-01', null, null, 'ch1');
     const dept = rule('dept', '2026-01-01', null, 'd1');

@@ -90,10 +90,10 @@ export class AuthService {
       ),
     ];
     const roleCodes = [...new Set(activeAssignments.map((a) => a.role.code))];
-    const allCentres = activeAssignments.some((a) => a.centreId === null);
-    const centreIds = [
+    const allHospitals = activeAssignments.some((a) => a.hospitalId === null);
+    const hospitalIds = [
       ...new Set(
-        activeAssignments.map((a) => a.centreId).filter((id): id is string => Boolean(id)),
+        activeAssignments.map((a) => a.hospitalId).filter((id): id is string => Boolean(id)),
       ),
     ];
 
@@ -111,8 +111,8 @@ export class AuthService {
     const grants = activeAssignments.map((assignment) => ({
       roleCode: assignment.role.code,
       permissions: [...new Set(assignment.role.permissions.map((p) => p.permission.code))],
-      allCentres: assignment.centreId === null,
-      centreIds: assignment.centreId ? [assignment.centreId] : [],
+      allHospitals: assignment.hospitalId === null,
+      hospitalIds: assignment.hospitalId ? [assignment.hospitalId] : [],
     }));
 
     return {
@@ -122,8 +122,8 @@ export class AuthService {
       fullName: user.fullName,
       roleCodes,
       permissions,
-      centreIds,
-      allCentres,
+      hospitalIds,
+      allHospitals,
       grants,
       mfaEnabled: user.mfaEnabled,
     };
@@ -246,15 +246,15 @@ export class AuthService {
   }
 
   async getProfile(user: AuthUser) {
-    const centres = await this.prisma.centre.findMany({
+    const hospitals = await this.prisma.hospital.findMany({
       where: {
         organizationId: user.organizationId,
-        ...(user.allCentres ? {} : { id: { in: user.centreIds } }),
+        ...(user.allHospitals ? {} : { id: { in: user.hospitalIds } }),
       },
       select: { id: true, code: true, name: true },
       orderBy: { code: 'asc' },
     });
-    return { ...user, centres };
+    return { ...user, hospitals };
   }
 
   private async issueTokens(user: AuthUser): Promise<TokenPair> {

@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useUser } from '../auth/AuthContext';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { AGEING_RAMP, RankedBars, SegmentedBar, Sparkline, TimeChart, VIZ } from '../components/charts';
 import { Card, ErrorNotice, Field, Input, Loading, Select } from '../components/ui';
 import { api } from '../lib/api';
-import { centreLabel, addMoney, compareMoney, firstOfMonthIso, formatDate, formatMoney, todayIso } from '../lib/format';
+import { hospitalLabel, addMoney, compareMoney, firstOfMonthIso, formatDate, formatMoney, todayIso } from '../lib/format';
 import { can } from '../lib/permissions';
 import type {
   AgeingSummary,
@@ -147,7 +147,7 @@ type FlowTileProps = {
   children?: ReactNode;
 };
 
-/** One step of the money flow: what centres made, what is due, what was paid, what is still owing. */
+/** One step of the money flow: what hospitals made, what is due, what was paid, what is still owing. */
 function FlowTile({ step, caption, measure, accent, trend, to, operator, footnote, emphasis = false, tone = 'default', children }: FlowTileProps) {
   const figure = tone === 'bad' ? 'text-red-700' : tone === 'good' ? 'text-emerald-700' : 'text-slate-900';
   const body = (
@@ -213,7 +213,7 @@ export function DashboardPage() {
   const user = useUser();
   // Filters live in the address, so a view can be shared, refreshed and reached with the back button.
   const [params, setParams] = useSearchParams();
-  const centreId = params.get('centreId') ?? '';
+  const hospitalId = params.get('hospitalId') ?? '';
   const from = params.get('from') ?? firstOfMonthIso();
   const to = params.get('to') ?? todayIso();
   const months = params.get('months') ?? '12';
@@ -230,44 +230,44 @@ export function DashboardPage() {
       },
       { replace: true },
     );
-  const filtered = params.has('centreId') || params.has('from') || params.has('to');
+  const filtered = params.has('hospitalId') || params.has('from') || params.has('to');
 
   const allowed = can(user, 'dashboard.read');
   const summary = useQuery({
-    queryKey: ['dashboard', centreId, from, to],
-    queryFn: () => api<DashboardSummary>('/dashboard/summary', { query: { centreId, from, to } }),
+    queryKey: ['dashboard', hospitalId, from, to],
+    queryFn: () => api<DashboardSummary>('/dashboard/summary', { query: { hospitalId, from, to } }),
     enabled: allowed,
   });
   const trends = useQuery({
-    queryKey: ['dashboard-trends', centreId, months],
-    queryFn: () => api<DashboardTrends>('/dashboard/trends', { query: { centreId, months } }),
+    queryKey: ['dashboard-trends', hospitalId, months],
+    queryFn: () => api<DashboardTrends>('/dashboard/trends', { query: { hospitalId, months } }),
     enabled: allowed,
   });
   const collection = useQuery({
-    queryKey: ['dashboard-collection', centreId, months, windowDays],
-    queryFn: () => api<DashboardCollection>('/dashboard/collection', { query: { centreId, months, windowDays } }),
+    queryKey: ['dashboard-collection', hospitalId, months, windowDays],
+    queryFn: () => api<DashboardCollection>('/dashboard/collection', { query: { hospitalId, months, windowDays } }),
     enabled: allowed && can(user, 'receivables.read'),
   });
   const reporting = useQuery({
-    queryKey: ['dashboard-reporting', centreId],
-    queryFn: () => api<ReportingStatusResponse>('/dashboard/reporting-status', { query: { centreId } }),
+    queryKey: ['dashboard-reporting', hospitalId],
+    queryFn: () => api<ReportingStatusResponse>('/dashboard/reporting-status', { query: { hospitalId } }),
     enabled: allowed,
   });
   const insights = useQuery({
-    queryKey: ['dashboard-insights', centreId],
-    queryFn: () => api<InsightsResponse>('/dashboard/insights', { query: { centreId } }),
+    queryKey: ['dashboard-insights', hospitalId],
+    queryFn: () => api<InsightsResponse>('/dashboard/insights', { query: { hospitalId } }),
     enabled: allowed,
   });
   const composition = (id: string) => ({
-    queryKey: ['dashboard-composition', id, centreId, from, to],
-    queryFn: () => api<{ items: Array<Record<string, string>> }>(`/reports/${id}`, { query: { centreId, from, to, pageSize: 8 } }),
+    queryKey: ['dashboard-composition', id, hospitalId, from, to],
+    queryFn: () => api<{ items: Array<Record<string, string>> }>(`/reports/${id}`, { query: { hospitalId, from, to, pageSize: 8 } }),
     enabled: allowed && can(user, 'reports.read'),
   });
   const departments = useQuery(composition('department-revenue'));
   const channelMix = useQuery(composition('channel-revenue'));
   const ageing = useQuery({
-    queryKey: ['ageing', centreId],
-    queryFn: () => api<AgeingSummary>('/receivables/ageing', { query: { centreId } }),
+    queryKey: ['ageing', hospitalId],
+    queryFn: () => api<AgeingSummary>('/receivables/ageing', { query: { hospitalId } }),
     enabled: can(user, 'receivables.read'),
   });
   const catalogue = useQuery({
@@ -290,7 +290,7 @@ export function DashboardPage() {
   const reportLink = (id: string, extra: Record<string, string | undefined> = {}) => {
     if (!available.has(id)) return undefined;
     const query = new URLSearchParams();
-    const merged = { centreId, ...extra };
+    const merged = { hospitalId, ...extra };
     for (const [key, value] of Object.entries(merged)) if (value) query.set(key, value);
     const text = query.toString();
     return `/reports/${id}${text ? `?${text}` : ''}`;
@@ -308,7 +308,7 @@ export function DashboardPage() {
         { label: 'Charge runs to post', count: awaiting.chargeRunsToPost, to: '/charge-runs?status=APPROVED' },
         { label: 'Receipts to approve', count: awaiting.receiptsToApprove, to: '/payments?status=SUBMITTED' },
         { label: 'Receipts to post', count: awaiting.receiptsToPost, to: '/payments?status=APPROVED' },
-        { label: 'Centres still in draft', count: awaiting.draftCentres, to: '/centres?status=DRAFT' },
+        { label: 'Hospitals still in draft', count: awaiting.draftHospitals, to: '/hospitals?status=DRAFT' },
       ].filter((item) => item.count > 0)
     : [];
 
@@ -333,11 +333,11 @@ export function DashboardPage() {
   const collectionDetails = collectionSeries.map((point) => detailLabel(point.month, trends.data?.currentMonth));
   const hasCollection = collectionSeries.some((point) => Number(point.due) > 0);
 
-  const ageingRows = ageing.data?.centres ?? [];
-  const byCentre = [...ageingRows].sort((a, b) => Number(b.outstanding) - Number(a.outstanding)).slice(0, 8);
-  const centreName = (id: string) => {
-    const found = user.centres?.find((centre) => centre.id === id);
-    return found ? centreLabel(found) : 'selected centre';
+  const ageingRows = ageing.data?.hospitals ?? [];
+  const byHospital = [...ageingRows].sort((a, b) => Number(b.outstanding) - Number(a.outstanding)).slice(0, 8);
+  const hospitalName = (id: string) => {
+    const found = user.hospitals?.find((hospital) => hospital.id === id);
+    return found ? hospitalLabel(found) : 'selected hospital';
   };
 
   /** What a click on a month offers: focus every figure on that month, and open its records. */
@@ -360,7 +360,7 @@ export function DashboardPage() {
     );
   };
 
-  const late = reporting.data?.centres.filter((centre) => centre.late) ?? [];
+  const late = reporting.data?.hospitals.filter((hospital) => hospital.late) ?? [];
 
   return (
     <div className="space-y-6">
@@ -372,7 +372,7 @@ export function DashboardPage() {
             </p>
             <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">Receivables overview</h1>
             <p className="mt-1 max-w-2xl text-sm text-white/80">
-              Read left to right: what the centres made, what is due to you as service charge, what they have paid, and what they still owe (due less paid), for the period you choose.
+              Read left to right: what the hospitals made, what is due to you as service charge, what they have paid, and what they still owe (due less paid), for the period you choose.
             </p>
           </div>
           {summary.data && (
@@ -380,7 +380,7 @@ export function DashboardPage() {
           )}
         </div>
         <div className="mt-5 grid gap-3 rounded-xl bg-white p-3 text-slate-900 shadow-sm sm:grid-cols-4">
-          <Field label="Centre">{(id) => <CentreSelect id={id} allowAll value={centreId} onChange={(value) => setParam({ centreId: value || null })} />}</Field>
+          <Field label="Hospital">{(id) => <HospitalSelect id={id} allowAll value={hospitalId} onChange={(value) => setParam({ hospitalId: value || null })} />}</Field>
           <Field label="Period from">
             {(id) => <Input id={id} type="date" value={from} max={to} onChange={(event) => setParam({ from: event.target.value || null })} />}
           </Field>
@@ -417,7 +417,7 @@ export function DashboardPage() {
         {filtered && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-white/75">Showing:</span>
-            {centreId && <span className="rounded-full bg-white/20 px-2.5 py-1 font-medium">{centreName(centreId)}</span>}
+            {hospitalId && <span className="rounded-full bg-white/20 px-2.5 py-1 font-medium">{hospitalName(hospitalId)}</span>}
             <span className="rounded-full bg-white/20 px-2.5 py-1 font-medium">
               {formatDate(from)} – {formatDate(to)}
             </span>
@@ -436,7 +436,7 @@ export function DashboardPage() {
           <section aria-label="Money flow" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <FlowTile
               step={1}
-              caption="What the centres made"
+              caption="What the hospitals made"
               measure={m.reportedRevenue}
               trend={column((p) => p.reportedRevenue)}
               accent="#64748b"
@@ -464,7 +464,7 @@ export function DashboardPage() {
             />
             <FlowTile
               step={3}
-              caption="What the centres have paid you"
+              caption="What the hospitals have paid you"
               measure={m.paymentsReceived}
               trend={column((p) => p.paymentsReceived)}
               accent={VIZ.aqua}
@@ -479,7 +479,7 @@ export function DashboardPage() {
               measure={{ ...m.owedForPeriod, label: Number(m.owedForPeriod.amount) < 0 ? 'Paid ahead' : m.owedForPeriod.label }}
               accent={Number(m.owedForPeriod.amount) > 0 ? '#dc2626' : '#059669'}
               tone={Number(m.owedForPeriod.amount) > 0 ? 'bad' : 'good'}
-              to={reportLink('centre-comparison', periodQuery)}
+              to={reportLink('hospital-comparison', periodQuery)}
             >
               {m.owedForPeriod.percentPaid != null && (
                 <div className="mt-3" role="img" aria-label={`${m.owedForPeriod.percentPaid}% of the expected charge has been paid`}>
@@ -605,7 +605,7 @@ export function DashboardPage() {
               series={[{ key: 'rate', label: 'Received ÷ charged', color: VIZ.aqua, values: series.map((p) => p.collectionRate) }]}
             />
             <p className="mt-2 text-xs text-slate-500">
-              Cash received in a month divided by charges posted in the same month. Centres may be paying older balances, so this is not a collection rate; see
+              Cash received in a month divided by charges posted in the same month. Hospitals may be paying older balances, so this is not a collection rate; see
               the next chart.
             </p>
           </Card>
@@ -675,7 +675,7 @@ export function DashboardPage() {
               series={[{ key: 'revenue', label: 'Reported revenue', color: VIZ.blue, values: column((p) => p.reportedRevenue) }]}
             />
             <p className="mt-2 text-xs text-slate-500">
-              Committed centre reports by the month their period ends. This is the base for service charges, not money received.
+              Committed hospital reports by the month their period ends. This is the base for service charges, not money received.
             </p>
           </Card>
         </div>
@@ -715,7 +715,7 @@ export function DashboardPage() {
               secondaryLabel=""
             />
             <p className="mt-3 text-xs text-slate-500">
-              Reported by centres, not verified against bank deposits.{' '}
+              Reported by hospitals, not verified against bank deposits.{' '}
               <Link className="text-brand-700 underline" to={reportLink('channel-revenue', periodQuery) ?? '/reports'}>
                 Open the full report
               </Link>
@@ -747,7 +747,7 @@ export function DashboardPage() {
           actions={
             reportLink('reporting-status') && (
               <Link className="text-xs text-brand-700 underline" to={reportLink('reporting-status') as string}>
-                All centres
+                All hospitals
               </Link>
             )
           }
@@ -756,24 +756,24 @@ export function DashboardPage() {
           <ErrorNotice error={reporting.error} />
           {reporting.data && late.length === 0 && (
             <p className="text-sm text-slate-500">
-              {reporting.data.centres.length === 0
-                ? 'No active centres.'
-                : `Every active centre has reported within the last ${reporting.data.lateAfterDays} days.`}
+              {reporting.data.hospitals.length === 0
+                ? 'No active hospitals.'
+                : `Every active hospital has reported within the last ${reporting.data.lateAfterDays} days.`}
             </p>
           )}
           {late.length > 0 && (
             <>
               <p className="mb-2 text-sm text-red-700">
-                {late.length} centre{late.length === 1 ? ' is' : 's are'} late: no report ending in the last {reporting.data?.lateAfterDays} days.
+                {late.length} hospital{late.length === 1 ? ' is' : 's are'} late: no report ending in the last {reporting.data?.lateAfterDays} days.
               </p>
               <ul className="divide-y divide-slate-100">
-                {late.slice(0, 6).map((centre) => (
-                  <li key={centre.centreId} className="flex items-center justify-between py-2 text-sm">
-                    <Link className="text-slate-700 hover:text-brand-700 hover:underline" to={`/imports?centreId=${centre.centreId}`}>
-                      {centreLabel(centre)}
+                {late.slice(0, 6).map((hospital) => (
+                  <li key={hospital.hospitalId} className="flex items-center justify-between py-2 text-sm">
+                    <Link className="text-slate-700 hover:text-brand-700 hover:underline" to={`/imports?hospitalId=${hospital.hospitalId}`}>
+                      {hospitalLabel(hospital)}
                     </Link>
                     <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-                      {centre.daysSince === null ? 'never reported' : `${centre.daysSince} days`}
+                      {hospital.daysSince === null ? 'never reported' : `${hospital.daysSince} days`}
                     </span>
                   </li>
                 ))}
@@ -803,25 +803,25 @@ export function DashboardPage() {
         )}
       </Card>
 
-      {ageing.data && byCentre.length > 0 && (
+      {ageing.data && byHospital.length > 0 && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card title={`Outstanding by centre${ageingRows.length > byCentre.length ? ` (top ${byCentre.length})` : ''}`}>
+          <Card title={`Outstanding by hospital${ageingRows.length > byHospital.length ? ` (top ${byHospital.length})` : ''}`}>
             <RankedBars
               format={monthFormat}
               color={VIZ.blue}
-              items={byCentre.map((row) => ({
-                key: row.centreId,
+              items={byHospital.map((row) => ({
+                key: row.hospitalId,
                 label: (
                   <span className="flex items-center gap-3">
                     <button
                       type="button"
                       className="truncate text-left hover:text-brand-700 hover:underline"
-                      title="Focus the whole dashboard on this centre"
-                      onClick={() => setParam({ centreId: row.centreId })}
+                      title="Focus the whole dashboard on this hospital"
+                      onClick={() => setParam({ hospitalId: row.hospitalId })}
                     >
-                      {centreLabel(row)}
+                      {hospitalLabel(row)}
                     </button>
-                    <Link className="shrink-0 text-xs text-brand-700 underline" to={`/receivables?centreId=${row.centreId}&openOnly=true`}>
+                    <Link className="shrink-0 text-xs text-brand-700 underline" to={`/receivables?hospitalId=${row.hospitalId}&openOnly=true`}>
                       records
                     </Link>
                   </span>
@@ -829,9 +829,9 @@ export function DashboardPage() {
                 value: row.outstanding,
               }))}
             />
-            <p className="mt-3 text-xs text-slate-500">Click a centre to focus every figure and chart on it.</p>
+            <p className="mt-3 text-xs text-slate-500">Click a hospital to focus every figure and chart on it.</p>
           </Card>
-          <Card title="Overdue (past 30 days) by centre">
+          <Card title="Overdue (past 30 days) by hospital">
             <RankedBars
               format={monthFormat}
               color="#dc2626"
@@ -842,7 +842,7 @@ export function DashboardPage() {
                 }))
                 .sort((a, b) => compareMoney(b.value, a.value))
                 .slice(0, 8)
-                .map(({ row, value }) => ({ key: row.centreId, label: centreLabel(row), value }))}
+                .map(({ row, value }) => ({ key: row.hospitalId, label: hospitalLabel(row), value }))}
             />
             <p className="mt-3 text-xs text-slate-500">Balances more than 30 days past due, summed from the ageing buckets.</p>
           </Card>

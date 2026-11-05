@@ -1,9 +1,9 @@
 // Permissions and system roles: the reference data every environment needs, demo or production.
 export const PERMISSIONS = [
   ['dashboard.read', 'View dashboard', 'Dashboard', 'View operational and financial overview'],
-  ['centres.read', 'View centres', 'Centres', 'View centre profiles and configuration'],
-  ['centres.create', 'Create centres', 'Centres', 'Create new centres'],
-  ['centres.update', 'Update centres', 'Centres', 'Edit centre profiles and status'],
+  ['hospitals.read', 'View hospitals', 'Hospitals', 'View hospital profiles and configuration'],
+  ['hospitals.create', 'Create hospitals', 'Hospitals', 'Create new hospitals'],
+  ['hospitals.update', 'Update hospitals', 'Hospitals', 'Edit hospital profiles and status'],
   [
     'platform.manage',
     'Manage platform settings',
@@ -11,10 +11,10 @@ export const PERMISSIONS = [
     'Email (SMTP) setup, logo and favicon, the approved email domains and the registered super admins (super admin only)',
   ],
   [
-    'centres.onboard',
-    'Set up centres from a report',
-    'Centres',
-    'Use the setup wizard to create a centre with its departments, payment channels and terms from a report file (super admin only)',
+    'hospitals.onboard',
+    'Set up hospitals from a report',
+    'Hospitals',
+    'Use the setup wizard to create a hospital with its departments, payment channels and terms from a report file (super admin only)',
   ],
   ['imports.read', 'View imports', 'Imports', 'View import batches and validation results'],
   ['imports.manage', 'Manage imports', 'Imports', 'Upload and validate imports'],
@@ -109,11 +109,18 @@ export const PERMISSIONS = [
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  // Every permission, for the platform owner. Same powers as ADMIN today; kept as its own role so the title is explicit and ADMIN can be narrowed later.
+  // Every permission, for the platform owner.
   SUPER_ADMIN: PERMISSIONS.map((p) => p[0]),
-  // The wizard that creates whole centres from a file is reserved for the platform owner.
+  // Hospital configuration is centralised on the platform owner; everyone else reads only.
   ADMIN: PERMISSIONS.map((p) => p[0]).filter(
-    (p) => !['centres.onboard', 'platform.manage'].includes(p),
+    (p) =>
+      ![
+        'hospitals.create',
+        'hospitals.update',
+        'hospitals.onboard',
+        'charge_rules.manage',
+        'platform.manage',
+      ].includes(p),
   ),
   FINANCE_MANAGER: PERMISSIONS.map((p) => p[0]).filter(
     (p) =>
@@ -121,14 +128,17 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
         'users.manage',
         'roles.manage',
         'settings.manage',
-        'centres.onboard',
+        'hospitals.create',
+        'hospitals.update',
+        'hospitals.onboard',
+        'charge_rules.manage',
         'platform.manage',
         'imports.approve_variance',
       ].includes(p),
   ),
   FINANCE_OFFICER: [
     'dashboard.read',
-    'centres.read',
+    'hospitals.read',
     'imports.read',
     'imports.manage',
     'reports.read',
@@ -149,7 +159,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   AUDITOR: [
     'dashboard.read',
-    'centres.read',
+    'hospitals.read',
     'imports.read',
     'reports.read',
     'charge_rules.read',

@@ -194,7 +194,7 @@ describe('second factor at sign-in', () => {
     mfaEnabled,
     roleAssignments: [
       {
-        centreId: null,
+        hospitalId: null,
         role: {
           code: 'FINANCE_MANAGER',
           isActive: true,
@@ -207,7 +207,7 @@ describe('second factor at sign-in', () => {
     ...approver(mfaEnabled),
     roleAssignments: [
       {
-        centreId: null,
+        hospitalId: null,
         role: {
           code: 'AUDITOR',
           isActive: true,
@@ -292,7 +292,7 @@ describe('which email addresses may sign in', () => {
     mfaEnabled: false,
     roleAssignments: [
       {
-        centreId: null,
+        hospitalId: null,
         role: {
           code: roleCode,
           isActive: true,

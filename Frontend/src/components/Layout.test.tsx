@@ -27,10 +27,10 @@ describe('navigation', () => {
     expect(links()).not.toContain('Payments');
   });
 
-  it('shows who is signed in and their centre scope', () => {
-    hoisted.user = makeSessionUser({ fullName: 'Ada Manager', roleCodes: ['FINANCE_MANAGER'], allCentres: false, centreIds: ['a', 'b'], permissions: ['dashboard.read'] });
+  it('shows who is signed in and their hospital scope', () => {
+    hoisted.user = makeSessionUser({ fullName: 'Ada Manager', roleCodes: ['FINANCE_MANAGER'], allHospitals: false, hospitalIds: ['a', 'b'], permissions: ['dashboard.read'] });
     renderWithProviders(<Layout />);
     expect(screen.getByText('Ada Manager')).toBeInTheDocument();
-    expect(screen.getByText('2 assigned centres')).toBeInTheDocument();
+    expect(screen.getByText('2 assigned hospitals')).toBeInTheDocument();
   });
 });

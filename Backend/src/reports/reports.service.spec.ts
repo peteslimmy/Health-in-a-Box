@@ -11,7 +11,7 @@ const exporter = makeUser('exporter', [
 ]);
 const noPayments = makeUser('np', [grant('R', ['reports.read', 'receivables.read'], 'ALL')]);
 const scoped = makeUser('scoped', [
-  grant('R', ['reports.read', 'receivables.read', 'payments.read'], ['centre-a']),
+  grant('R', ['reports.read', 'receivables.read', 'payments.read'], ['hospital-a']),
 ]);
 
 function build() {
@@ -21,7 +21,7 @@ function build() {
       findMany: jest.fn().mockResolvedValue([]),
     },
     payment: { findMany: jest.fn().mockResolvedValue([]) },
-    centre: { findMany: jest.fn().mockResolvedValue([]) },
+    hospital: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   return { service: new ReportsService(prisma as never, audit as never), prisma, audit };
@@ -79,12 +79,16 @@ describe('listing and permissions', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it('limits a scoped caller to their centres and hides other centres', async () => {
+  it('limits a scoped caller to their hospitals and hides other hospitals', async () => {
     const { service, prisma } = build();
     await service.run(scoped, 'payment-register', {});
-    expect(prisma.payment.findMany.mock.calls[0][0].where.centreId).toEqual({ in: ['centre-a'] });
+    expect(prisma.payment.findMany.mock.calls[0][0].where.hospitalId).toEqual({
+      in: ['hospital-a'],
+    });
     await expect(
-      service.run(scoped, 'payment-register', { centreId: '11111111-1111-4111-8111-111111111111' }),
+      service.run(scoped, 'payment-register', {
+        hospitalId: '11111111-1111-4111-8111-111111111111',
+      }),
     ).rejects.toMatchObject({ status: 404 });
   });
 });
@@ -127,10 +131,10 @@ describe('ageing report', () => {
     const future = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
     const old = new Date(Date.now() - 45 * 86_400_000).toISOString().slice(0, 10);
     prisma.receivable.groupBy.mockResolvedValue([
-      { centreId: 'c1', dueDate: D(future), _sum: { balance: new Decimal('100.00') } },
-      { centreId: 'c1', dueDate: D(old), _sum: { balance: new Decimal('250.50') } },
+      { hospitalId: 'c1', dueDate: D(future), _sum: { balance: new Decimal('100.00') } },
+      { hospitalId: 'c1', dueDate: D(old), _sum: { balance: new Decimal('250.50') } },
     ]);
-    prisma.centre.findMany.mockResolvedValue([{ id: 'c1', code: 'C1', name: 'One' }]);
+    prisma.hospital.findMany.mockResolvedValue([{ id: 'c1', code: 'C1', name: 'One' }]);
     const result = await service.run(reader, 'receivables-ageing', {});
     expect(result.items[0]).toMatchObject({
       NOT_YET_DUE: '100.00',
@@ -149,7 +153,7 @@ describe('export', () => {
     prisma.payment.findMany.mockResolvedValue([
       {
         receiptDate: D('2026-10-05'),
-        centre: { code: 'C1', name: 'One' },
+        hospital: { code: 'C1', name: 'One' },
         reference: 'R1',
         payerName: 'Payer',
         method: 'TRANSFER',
@@ -217,10 +221,10 @@ describe('more reports', () => {
     grant('R', ['reports.read', 'receivables.read', 'payments.read', 'adjustments.read'], 'ALL'),
   ]);
 
-  it('will not produce a statement without a centre', async () => {
+  it('will not produce a statement without a hospital', async () => {
     const { service } = build();
-    await expect(service.run(all, 'centre-statement', {})).rejects.toMatchObject({
-      response: { code: 'CENTRE_REQUIRED' },
+    await expect(service.run(all, 'hospital-statement', {})).rejects.toMatchObject({
+      response: { code: 'HOSPITAL_REQUIRED' },
     });
   });
 
@@ -250,8 +254,8 @@ describe('more reports', () => {
       ]),
     };
     (prisma as unknown as Record<string, unknown>).ledgerEntry = ledger;
-    const result = await service.run(all, 'centre-statement', {
-      centreId: '11111111-1111-4111-8111-111111111111',
+    const result = await service.run(all, 'hospital-statement', {
+      hospitalId: '11111111-1111-4111-8111-111111111111',
       from: '2026-10-01',
     });
     const balances = result.items.map((row) => row.balance);
@@ -262,9 +266,9 @@ describe('more reports', () => {
 
   it('weights settlement delay by amount and counts on-time payments', async () => {
     const { service, prisma } = build();
-    const centre = { id: 'c1', code: 'C1', name: 'One', paymentTermsDays: 30 };
+    const hospital = { id: 'c1', code: 'C1', name: 'One', paymentTermsDays: 30 };
     const settled = (amount: string, due: string, paid: string) => ({
-      centre,
+      hospital,
       dueDate: D(due),
       originalAmount: new Decimal(amount),
       adjustmentTotal: new Decimal('0'),

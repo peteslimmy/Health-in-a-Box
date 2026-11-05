@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useUser } from '../auth/AuthContext';
 import { Button, Card, EmptyState, ErrorNotice, Field, KeyValue, Loading, Notice, PageHeader, StatusBadge, Table, Td, Textarea, Th } from '../components/ui';
 import { api } from '../lib/api';
-import { centreLabel, formatDate, formatDateTime, formatMoney } from '../lib/format';
+import { hospitalLabel, formatDate, formatDateTime, formatMoney } from '../lib/format';
 import { can } from '../lib/permissions';
 import type { ImportDetail, ImportIssue } from '../lib/types';
 
@@ -57,9 +57,9 @@ const CHECKS: Check[] = [
   },
   { label: 'Row numbers run without gaps or repeats', codes: ['SERIAL_GAP'], hint: 'A printed row may be missing or repeated.' },
   {
-    label: 'Departments and channels are known to the centre',
+    label: 'Departments and channels are known to the hospital',
     codes: ['UNKNOWN_DEPARTMENT', 'UNKNOWN_CHANNEL_COLUMN', 'DUPLICATE_DEPARTMENT', 'DUPLICATE_CHANNEL_COLUMN'],
-    hint: 'Names in the file are not set up for this centre.',
+    hint: 'Names in the file are not set up for this hospital.',
   },
   {
     label: 'No day is already in the system',
@@ -189,7 +189,7 @@ export function ImportDetailPage() {
         title={batch.fileName ?? 'Revenue import'}
         subtitle={
           <>
-            <StatusBadge status={batch.status} /> {centreLabel(batch.centre)} · {formatDate(batch.periodStart)} – {formatDate(batch.periodEnd)}
+            <StatusBadge status={batch.status} /> {hospitalLabel(batch.hospital)} · {formatDate(batch.periodStart)} – {formatDate(batch.periodEnd)}
           </>
         }
         actions={
@@ -213,7 +213,7 @@ export function ImportDetailPage() {
           The report is recorded with its channel amounts as its figures, and your reason is kept with it.{' '}
           <Link
             className="underline"
-            to={`/charge-runs/new?centreId=${batch.centre.id}&periodStart=${batch.periodStart.slice(0, 10)}&periodEnd=${batch.periodEnd.slice(0, 10)}`}
+            to={`/charge-runs/new?hospitalId=${batch.hospital.id}&periodStart=${batch.periodStart.slice(0, 10)}&periodEnd=${batch.periodEnd.slice(0, 10)}`}
           >
             Calculate service charges for this period
           </Link>
@@ -235,7 +235,7 @@ export function ImportDetailPage() {
           The revenue report is now recorded.{' '}
           <Link
             className="underline"
-            to={`/charge-runs/new?centreId=${batch.centre.id}&periodStart=${batch.periodStart.slice(0, 10)}&periodEnd=${batch.periodEnd.slice(0, 10)}`}
+            to={`/charge-runs/new?hospitalId=${batch.hospital.id}&periodStart=${batch.periodStart.slice(0, 10)}&periodEnd=${batch.periodEnd.slice(0, 10)}`}
           >
             Calculate service charges for this period
           </Link>
@@ -251,12 +251,12 @@ export function ImportDetailPage() {
         <Notice tone="bad" title={`${errors.length} problem${errors.length === 1 ? '' : 's'} must be fixed before this can be committed`}>
           Nothing has been posted and nothing already in the system was changed.{' '}
           {setupProblem
-            ? 'Some departments or channels are not set up for this centre: upload the file again with "Add departments and payment channels found in this file" ticked, or add them in the centre setup. '
+            ? 'Some departments or channels are not set up for this hospital: upload the file again with "Add departments and payment channels found in this file" ticked, or add them in the hospital setup. '
             : ''}
           {onlyTotalsDiffer
             ? can(user, 'imports.approve_variance')
-              ? 'Only differences in the printed totals were found, so a reviewer may accept them in writing below, or the centre can send a corrected report. '
-              : 'Only differences in the printed totals were found. The centre can send a corrected report, or someone with permission to approve differences can accept them in writing. '
+              ? 'Only differences in the printed totals were found, so a reviewer may accept them in writing below, or the hospital can send a corrected report. '
+              : 'Only differences in the printed totals were found. The hospital can send a corrected report, or someone with permission to approve differences can accept them in writing. '
             : 'Printed totals that do not tally must be corrected in the source report and re-exported. Other problems here cannot be approved. '}
           <Link className="underline" to="/imports/new">
             Upload again
@@ -265,9 +265,9 @@ export function ImportDetailPage() {
       )}
 
       {setupAdded && (setupAdded.departments.length > 0 || setupAdded.channels.length > 0) && (
-        <Notice tone="info" title="Added to the centre from this file">
+        <Notice tone="info" title="Added to the hospital from this file">
           {setupAdded.departments.length} department(s) and {setupAdded.channels.length} payment channel(s) were created (
-          {setupAdded.channels.join(', ') || 'no new channels'}). Review them in the centre setup.
+          {setupAdded.channels.join(', ') || 'no new channels'}). Review them in the hospital setup.
         </Notice>
       )}
 
@@ -334,7 +334,7 @@ export function ImportDetailPage() {
                 <li>Only differences between totals can be approved. It cannot be undone; a mistake is corrected with a later adjustment.</li>
               </ul>
             </Notice>
-            <Field label="Why are these differences acceptable?" hint="At least 20 characters. For example, who at the centre confirmed what. This is shown with the report.">
+            <Field label="Why are these differences acceptable?" hint="At least 20 characters. For example, who at the hospital confirmed what. This is shown with the report.">
               {(fieldId) => <Textarea id={fieldId} rows={3} maxLength={1000} value={varianceReason} onChange={(event) => setVarianceReason(event.target.value)} />}
             </Field>
             {needsAcknowledgement && (
@@ -358,7 +358,7 @@ export function ImportDetailPage() {
       <Card title="Summary">
         <KeyValue
           items={[
-            ['Centre', centreLabel(batch.centre)],
+            ['Hospital', hospitalLabel(batch.hospital)],
             ['Uploaded by', `${batch.createdBy.fullName} on ${formatDateTime(batch.createdAt)}`],
             ['Department rows', `${batch.rowCount} (${batch.validRowCount} valid)`],
             ['Grand total (reported)', formatMoney(validation?.grandTotal ?? batch.totalAmount)],
@@ -404,7 +404,7 @@ export function ImportDetailPage() {
 
       <Card title="Parsed department rows">
         {lines.length === 0 ? (
-          <EmptyState title="No rows could be matched to the centre's departments" hint="Fix the errors above, then upload again." />
+          <EmptyState title="No rows could be matched to the hospital's departments" hint="Fix the errors above, then upload again." />
         ) : (
           <Table caption="Parsed department rows">
             <thead>

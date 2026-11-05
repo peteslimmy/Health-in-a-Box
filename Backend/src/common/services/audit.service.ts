@@ -6,7 +6,7 @@ import { currentCorrelationId } from '../request-context';
 export type AuditInput = {
   organizationId: string;
   actorId?: string | null;
-  centreId?: string | null;
+  hospitalId?: string | null;
   action: string;
   targetType: string;
   targetId?: string | null;
@@ -33,9 +33,9 @@ export class AuditService {
 
   async list(params: {
     organizationId: string;
-    /** Undefined = all centres. Scoped users never see organisation-level (centre-less) events. */
-    centreIds?: string[];
-    centreId?: string;
+    /** Undefined = all hospitals. Scoped users never see organisation-level (hospital-less) events. */
+    hospitalIds?: string[];
+    hospitalId?: string;
     action?: string;
     targetType?: string;
     from?: Date;
@@ -45,10 +45,10 @@ export class AuditService {
   }) {
     const where: Prisma.AuditEventWhereInput = {
       organizationId: params.organizationId,
-      ...(params.centreId
-        ? { centreId: params.centreId }
-        : params.centreIds
-          ? { centreId: { in: params.centreIds } }
+      ...(params.hospitalId
+        ? { hospitalId: params.hospitalId }
+        : params.hospitalIds
+          ? { hospitalId: { in: params.hospitalIds } }
           : {}),
       ...(params.action ? { action: params.action } : {}),
       ...(params.targetType ? { targetType: params.targetType } : {}),
@@ -70,7 +70,7 @@ export class AuditService {
         take: params.take,
         include: {
           actor: { select: { id: true, fullName: true, email: true } },
-          centre: { select: { id: true, code: true, name: true } },
+          hospital: { select: { id: true, code: true, name: true } },
         },
       }),
       this.prisma.auditEvent.count({ where }),

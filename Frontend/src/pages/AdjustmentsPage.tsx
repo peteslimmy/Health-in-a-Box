@@ -72,7 +72,7 @@ export function AdjustmentsPage() {
     <div className="space-y-5">
       <PageHeader
         title="Adjustments, disputes and opening balances"
-        subtitle="Changes to what a centre owes, with a reason and a second person's approval. Nothing is edited or deleted: every change is a new ledger entry."
+        subtitle="Changes to what a hospital owes, with a reason and a second person's approval. Nothing is edited or deleted: every change is a new ledger entry."
         actions={
           <>
             {tab === 'adjustments' && can(user, 'adjustments.create') && <Button onClick={() => setDialog('adjustment')}>Propose adjustment</Button>}
@@ -146,7 +146,7 @@ export function AdjustmentsPage() {
                     <Link className="text-brand-700 hover:underline" to={`/receivables/${item.receivable.id}`}>
                       {item.receivable.reference}
                     </Link>
-                    <div className="text-xs text-slate-500">{item.centre.name} ({item.centre.code})</div>
+                    <div className="text-xs text-slate-500">{item.hospital.name} ({item.hospital.code})</div>
                   </Td>
                   <Td>
                     <StatusBadge status={item.type} />
@@ -206,7 +206,7 @@ export function AdjustmentsPage() {
                     <Link className="text-brand-700 hover:underline" to={`/receivables/${item.receivable.id}`}>
                       {item.receivable.reference}
                     </Link>
-                    <div className="text-xs text-slate-500">{item.centre.name} ({item.centre.code})</div>
+                    <div className="text-xs text-slate-500">{item.hospital.name} ({item.hospital.code})</div>
                   </Td>
                   <Td numeric>{formatMoney(item.amount)}</Td>
                   <Td className="max-w-xs">
@@ -240,7 +240,7 @@ export function AdjustmentsPage() {
             <thead>
               <tr>
                 <Th>As at</Th>
-                <Th>Centre</Th>
+                <Th>Hospital</Th>
                 <Th numeric>Amount</Th>
                 <Th>Due</Th>
                 <Th>Source</Th>
@@ -252,7 +252,7 @@ export function AdjustmentsPage() {
               {(list.data.items as OpeningBalanceItem[]).map((item) => (
                 <tr key={item.id}>
                   <Td>{formatDate(item.asAt)}</Td>
-                  <Td>{item.centre.name} <span className="text-xs text-slate-500">({item.centre.code})</span></Td>
+                  <Td>{item.hospital.name} <span className="text-xs text-slate-500">({item.hospital.code})</span></Td>
                   <Td numeric>{formatMoney(item.amount)}</Td>
                   <Td>{formatDate(item.dueDate)}</Td>
                   <Td className="max-w-xs text-xs text-slate-600">
@@ -322,9 +322,9 @@ export function AdjustmentsPage() {
           <label className="block text-sm font-medium text-slate-700">
             Outcome
             <Select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)}>
-              <option value="UPHELD">Upheld: the centre is right</option>
+              <option value="UPHELD">Upheld: the hospital is right</option>
               <option value="REJECTED">Rejected: the charge stands</option>
-              <option value="WITHDRAWN">Withdrawn by the centre</option>
+              <option value="WITHDRAWN">Withdrawn by the hospital</option>
             </Select>
           </label>
           {outcome === 'UPHELD' && (

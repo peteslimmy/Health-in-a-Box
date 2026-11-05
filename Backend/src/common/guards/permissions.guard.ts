@@ -27,7 +27,7 @@ export class PermissionsGuard implements CanActivate {
     if (!user) throw new ForbiddenException('Access denied');
 
     // The request user is rebuilt per request, so narrowing its scope here only affects this
-    // request: services then see the centres the required permissions are actually valid for.
+    // request: services then see the hospitals the required permissions are actually valid for.
     const narrowed = narrowUserScope(user, required);
     if (!narrowed) throw new ForbiddenException('You do not have permission for this action');
     request.user = narrowed;

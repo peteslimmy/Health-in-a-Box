@@ -1,7 +1,7 @@
 import { ROLE_PERMISSIONS } from '../../prisma/reference-data';
-import { allCentresUser } from '../testing/fixtures';
-import { CentreSetupService } from './centre-setup.service';
-import { CommitSetupDto } from './dto/centre-setup.dto';
+import { allHospitalsUser, superAdminUser } from '../testing/fixtures';
+import { HospitalSetupService } from './hospital-setup.service';
+import { CommitSetupDto } from './dto/hospital-setup.dto';
 
 jest.mock('../imports/file-extractor', () => ({
   extractFile: jest.fn(async () => ({
@@ -14,22 +14,22 @@ jest.mock('../imports/file-extractor', () => ({
   })),
 }));
 
-const owner = allCentresUser('owner', ['centres.onboard']);
-const scoped = { ...owner, allCentres: false, centreIds: ['c1'] };
+const owner = superAdminUser('owner', ['hospitals.onboard']);
+const scoped = { ...owner, allHospitals: false, hospitalIds: ['c1'] };
 
 function build(overrides: { existing?: unknown; draftStatus?: string } = {}) {
   const created: Record<string, unknown[]> = {
-    centre: [],
+    hospital: [],
     department: [],
     paymentChannel: [],
     agreement: [],
     rule: [],
   };
   const tx = {
-    centre: {
+    hospital: {
       create: jest.fn(async ({ data }) => {
-        created.centre.push(data);
-        return { id: 'new-centre', ...data };
+        created.hospital.push(data);
+        return { id: 'new-hospital', ...data };
       }),
     },
     department: { create: jest.fn(async ({ data }) => created.department.push(data)) },
@@ -41,7 +41,7 @@ function build(overrides: { existing?: unknown; draftStatus?: string } = {}) {
       }),
     },
     chargeRule: { create: jest.fn(async ({ data }) => created.rule.push(data)) },
-    centreSetupDraft: { update: jest.fn() },
+    hospitalSetupDraft: { update: jest.fn() },
   };
   const draftRow = {
     id: 'draft-1',
@@ -50,16 +50,16 @@ function build(overrides: { existing?: unknown; draftStatus?: string } = {}) {
     fileName: 'uath.pdf',
     fileKey: 'k',
     analysisJson: {
-      profile: { centre: { suggestedName: 'X', suggestedCode: 'X' } },
+      profile: { hospital: { suggestedName: 'X', suggestedCode: 'X' } },
       existingMatches: [],
     },
   };
   const prisma = {
-    centre: {
+    hospital: {
       findFirst: jest.fn(async () => overrides.existing ?? null),
       findMany: jest.fn(async () => []),
     },
-    centreSetupDraft: {
+    hospitalSetupDraft: {
       findFirst: jest.fn(async () => draftRow),
       create: jest.fn(async ({ data }) => ({ id: 'draft-1', createdAt: new Date(), ...data })),
       update: jest.fn(),
@@ -72,7 +72,7 @@ function build(overrides: { existing?: unknown; draftStatus?: string } = {}) {
   };
   const audit = { record: jest.fn(async () => ({})) };
   const imports = { upload: jest.fn(async () => ({ id: 'import-1', status: 'READY_TO_COMMIT' })) };
-  const service = new CentreSetupService(
+  const service = new HospitalSetupService(
     prisma as never,
     storage as never,
     audit as never,
@@ -82,7 +82,7 @@ function build(overrides: { existing?: unknown; draftStatus?: string } = {}) {
 }
 
 const dto = (extra: Partial<CommitSetupDto> = {}): CommitSetupDto => ({
-  centre: { code: 'uath', name: ' University of Abuja Teaching Hospital ' },
+  hospital: { code: 'uath', name: ' University of Abuja Teaching Hospital ' },
   departments: [
     {
       printedName: 'ACCIDENT & EMERGENCY',
@@ -111,34 +111,48 @@ const csvFile = () =>
 
 describe('who may use the wizard', () => {
   it('is for the super admin only: ADMIN lacks the permission, SUPER_ADMIN has it', () => {
-    expect(ROLE_PERMISSIONS.SUPER_ADMIN).toContain('centres.onboard');
-    expect(ROLE_PERMISSIONS.ADMIN).not.toContain('centres.onboard');
-    expect(ROLE_PERMISSIONS.FINANCE_MANAGER).not.toContain('centres.onboard');
-    expect(ROLE_PERMISSIONS.FINANCE_OFFICER).not.toContain('centres.onboard');
-    expect(ROLE_PERMISSIONS.AUDITOR).not.toContain('centres.onboard');
+    expect(ROLE_PERMISSIONS.SUPER_ADMIN).toContain('hospitals.onboard');
+    expect(ROLE_PERMISSIONS.ADMIN).not.toContain('hospitals.onboard');
+    expect(ROLE_PERMISSIONS.FINANCE_MANAGER).not.toContain('hospitals.onboard');
+    expect(ROLE_PERMISSIONS.FINANCE_OFFICER).not.toContain('hospitals.onboard');
+    expect(ROLE_PERMISSIONS.AUDITOR).not.toContain('hospitals.onboard');
   });
 
-  it('also needs access to all centres, whatever the permission', async () => {
+  it('needs the super admin role even when the permission and every hospital are held', async () => {
+    const { service } = build();
+    const admin = allHospitalsUser('admin', ['hospitals.onboard']);
+    await expect(service.analyse(admin, csvFile())).rejects.toMatchObject({
+      response: { code: 'SUPER_ADMIN_REQUIRED' },
+    });
+    await expect(service.commit(admin, 'draft-1', dto())).rejects.toMatchObject({
+      response: { code: 'SUPER_ADMIN_REQUIRED' },
+    });
+    await expect(service.listOpen(admin)).rejects.toMatchObject({
+      response: { code: 'SUPER_ADMIN_REQUIRED' },
+    });
+  });
+
+  it('also needs access to all hospitals, whatever the permission', async () => {
     const { service } = build();
     await expect(service.analyse(scoped, csvFile())).rejects.toMatchObject({
-      response: { code: 'ALL_CENTRES_REQUIRED' },
+      response: { code: 'ALL_HOSPITALS_REQUIRED' },
     });
     await expect(service.commit(scoped, 'draft-1', dto())).rejects.toMatchObject({
-      response: { code: 'ALL_CENTRES_REQUIRED' },
+      response: { code: 'ALL_HOSPITALS_REQUIRED' },
     });
     await expect(service.listOpen(scoped)).rejects.toBeDefined();
   });
 });
 
 describe('reading a file', () => {
-  it('keeps the file and the findings as an open draft and creates no centre', async () => {
+  it('keeps the file and the findings as an open draft and creates no hospital', async () => {
     const { service, prisma, storage, tx } = build();
     const result = await service.analyse(owner, csvFile());
     expect(result.draftId).toBe('draft-1');
     expect(result.profile.departments.map((d) => d.name)).toEqual(['PHARMACY']);
     expect(storage.put).toHaveBeenCalled();
-    expect(prisma.centreSetupDraft.create).toHaveBeenCalled();
-    expect(tx.centre.create).not.toHaveBeenCalled();
+    expect(prisma.hospitalSetupDraft.create).toHaveBeenCalled();
+    expect(tx.hospital.create).not.toHaveBeenCalled();
   });
 
   it('refuses unsupported types and disguised files', async () => {
@@ -159,11 +173,11 @@ describe('reading a file', () => {
   });
 });
 
-describe('creating the centre', () => {
-  it('creates the centre, departments and channels together, remembering printed names as aliases', async () => {
+describe('creating the hospital', () => {
+  it('creates the hospital, departments and channels together, remembering printed names as aliases', async () => {
     const { service, created, tx, audit } = build();
     const result = await service.commit(owner, 'draft-1', dto());
-    expect(result.centre).toMatchObject({
+    expect(result.hospital).toMatchObject({
       code: 'UATH',
       name: 'University of Abuja Teaching Hospital',
       status: 'DRAFT',
@@ -177,18 +191,18 @@ describe('creating the centre', () => {
       // same words, different case: the existing matching already ignores case, so no alias needed
       expect.objectContaining({ code: 'PHARMACY', aliases: { create: [] } }),
     ]);
-    expect(tx.centreSetupDraft.update).toHaveBeenCalledWith(
+    expect(tx.hospitalSetupDraft.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'COMPLETED', centreId: 'new-centre' }),
+        data: expect.objectContaining({ status: 'COMPLETED', hospitalId: 'new-hospital' }),
       }),
     );
     expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'CENTRE_CREATED' }),
+      expect.objectContaining({ action: 'HOSPITAL_CREATED' }),
       tx,
     );
   });
 
-  it('adds the agreement and a centre-default rule, and activates, when terms are given', async () => {
+  it('adds the agreement and a hospital-default rule, and activates, when terms are given', async () => {
     const { service, created } = build();
     const result = await service.commit(
       owner,
@@ -198,7 +212,7 @@ describe('creating the centre', () => {
         activate: true,
       }),
     );
-    expect(result.centre.status).toBe('ACTIVE');
+    expect(result.hospital.status).toBe('ACTIVE');
     expect(created.agreement).toEqual([
       expect.objectContaining({ name: '2026 agreement', status: 'ACTIVE' }),
     ]);
@@ -216,7 +230,7 @@ describe('creating the centre', () => {
     await expect(service.commit(owner, 'draft-1', dto({ importNow: true }))).rejects.toMatchObject({
       response: { code: 'ACTIVATION_REQUIRED' },
     });
-    expect(tx.centre.create).not.toHaveBeenCalled();
+    expect(tx.hospital.create).not.toHaveBeenCalled();
   });
 
   it('refuses repeated codes or names in the lists, before anything is created', async () => {
@@ -238,15 +252,15 @@ describe('creating the centre', () => {
     await expect(service.commit(owner, 'draft-1', twice('name'))).rejects.toMatchObject({
       response: { code: 'SETUP_DUPLICATE_NAME' },
     });
-    expect(tx.centre.create).not.toHaveBeenCalled();
+    expect(tx.hospital.create).not.toHaveBeenCalled();
   });
 
-  it('refuses a centre whose code or name already exists', async () => {
+  it('refuses a hospital whose code or name already exists', async () => {
     const { service, tx } = build({ existing: { code: 'UATH', name: 'Other' } });
     await expect(service.commit(owner, 'draft-1', dto())).rejects.toMatchObject({
-      response: { code: 'CENTRE_EXISTS' },
+      response: { code: 'HOSPITAL_EXISTS' },
     });
-    expect(tx.centre.create).not.toHaveBeenCalled();
+    expect(tx.hospital.create).not.toHaveBeenCalled();
   });
 
   it('refuses a finished or cancelled set-up', async () => {
@@ -256,7 +270,7 @@ describe('creating the centre', () => {
     });
   });
 
-  it('imports the report afterwards, and keeps the centre if that import fails', async () => {
+  it('imports the report afterwards, and keeps the hospital if that import fails', async () => {
     const ok = build();
     const withImport = dto({
       terms: { agreementName: 'A', ratePercent: 5, effectiveFrom: '2026-09-25' },
@@ -268,13 +282,13 @@ describe('creating the centre', () => {
     expect(ok.imports.upload).toHaveBeenCalledWith(
       owner,
       expect.objectContaining({ originalname: 'uath.pdf' }),
-      { centreId: 'new-centre' },
+      { hospitalId: 'new-hospital' },
     );
 
     const bad = build();
     bad.imports.upload.mockRejectedValueOnce({ response: { message: 'The PDF did not tally' } });
     const failed = await bad.service.commit(owner, 'draft-1', withImport);
-    expect(failed.centre.code).toBe('UATH');
+    expect(failed.hospital.code).toBe('UATH');
     expect(failed.import).toBeNull();
     expect(failed.importError).toBe('The PDF did not tally');
   });

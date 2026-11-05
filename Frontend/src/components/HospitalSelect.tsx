@@ -1,9 +1,9 @@
 import { useUser } from '../auth/AuthContext';
-import { centreLabel } from '../lib/format';
+import { hospitalLabel } from '../lib/format';
 import { Select } from './ui';
 
-/** Lists only the centres the signed-in user is assigned to (the API enforces this too). */
-export function CentreSelect({
+/** Lists only the hospitals the signed-in user is assigned to (the API enforces this too). */
+export function HospitalSelect({
   value,
   onChange,
   allowAll = false,
@@ -17,13 +17,13 @@ export function CentreSelect({
   required?: boolean;
 }) {
   const user = useUser();
-  const centres = user.centres ?? [];
+  const hospitals = user.hospitals ?? [];
   return (
     <Select id={id} value={value} required={required} onChange={(event) => onChange(event.target.value)}>
-      {allowAll ? <option value="">All centres</option> : <option value="">Select a centre…</option>}
-      {centres.map((centre) => (
-        <option key={centre.id} value={centre.id}>
-          {centreLabel(centre)}
+      {allowAll ? <option value="">All hospitals</option> : <option value="">Select a hospital…</option>}
+      {hospitals.map((hospital) => (
+        <option key={hospital.id} value={hospital.id}>
+          {hospitalLabel(hospital)}
         </option>
       ))}
     </Select>

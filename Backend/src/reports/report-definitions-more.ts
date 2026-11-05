@@ -6,8 +6,8 @@ import { moneyString } from '../common/utils/money';
 import {
   BUCKET_LABEL,
   capped,
-  centreIdScope,
-  centreLabel,
+  hospitalIdScope,
+  hospitalLabel,
   col,
   dateRange,
   dec,
@@ -22,7 +22,7 @@ const pct = (part: Decimal, whole: Decimal) =>
   whole.gt(0) ? part.div(whole).times(100).toFixed(1) : null;
 const sortDesc = (a: Decimal, b: Decimal) => b.comparedTo(a);
 
-/** Committed revenue lines in scope, with their department and centre. */
+/** Committed revenue lines in scope, with their department and hospital. */
 async function revenueLines(ctx: ReportContext) {
   const range = dateRange(ctx);
   return capped(
@@ -38,7 +38,7 @@ async function revenueLines(ctx: ReportContext) {
       },
       include: {
         department: { select: { code: true, name: true } },
-        report: { select: { centre: { select: { code: true, name: true } } } },
+        report: { select: { hospital: { select: { code: true, name: true } } } },
       },
       take: MAX_REPORT_ROWS + 1,
     }),
@@ -46,7 +46,7 @@ async function revenueLines(ctx: ReportContext) {
 }
 
 const REVENUE_NOTE =
-  'Reported revenue as printed by each centre in its committed reports; not verified against patient-level records or bank deposits.';
+  'Reported revenue as printed by each hospital in its committed reports; not verified against patient-level records or bank deposits.';
 
 const departmentAnalysis: ReportDefinition = {
   id: 'department-revenue',
@@ -54,21 +54,21 @@ const departmentAnalysis: ReportDefinition = {
   description: 'Reported revenue by department with its share of the total.',
   category: 'Revenue',
   dateBasis: 'Report period (reports wholly inside the range)',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: [],
   totals: ['revenue'],
   async run(ctx) {
     const lines = await revenueLines(ctx);
-    const grouped = new Map<string, { label: string; revenue: Decimal; centres: Set<string> }>();
+    const grouped = new Map<string, { label: string; revenue: Decimal; hospitals: Set<string> }>();
     for (const line of lines) {
       const key = line.department.name.trim().toUpperCase();
       const entry = grouped.get(key) ?? {
         label: line.department.name,
         revenue: zero(),
-        centres: new Set(),
+        hospitals: new Set(),
       };
       entry.revenue = entry.revenue.plus(dec(line.reportedTotal));
-      entry.centres.add(line.report.centre.code);
+      entry.hospitals.add(line.report.hospital.code);
       grouped.set(key, entry);
     }
     const total = [...grouped.values()].reduce((t, e) => t.plus(e.revenue), zero());
@@ -76,19 +76,19 @@ const departmentAnalysis: ReportDefinition = {
       .sort((a, b) => sortDesc(a.revenue, b.revenue))
       .map((e) => ({
         department: e.label,
-        centres: e.centres.size,
+        hospitals: e.hospitals.size,
         revenue: moneyString(e.revenue),
         share: pct(e.revenue, total),
       }));
     return {
       columns: [
         col('department', 'Department'),
-        col('centres', 'Centres reporting it', 'int'),
+        col('hospitals', 'Hospitals reporting it', 'int'),
         col('revenue', 'Reported revenue', 'money'),
         col('share', 'Share of total (%)', 'percent'),
       ],
       rows,
-      notes: [REVENUE_NOTE, 'Departments with the same name in different centres are combined.'],
+      notes: [REVENUE_NOTE, 'Departments with the same name in different hospitals are combined.'],
     };
   },
 };
@@ -99,7 +99,7 @@ const channelAnalysis: ReportDefinition = {
   description: 'Reported revenue by payment channel with its share of the total.',
   category: 'Revenue',
   dateBasis: 'Report period (reports wholly inside the range)',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: [],
   totals: ['revenue'],
   async run(ctx) {
@@ -135,7 +135,7 @@ const channelAnalysis: ReportDefinition = {
 const concentration: ReportDefinition = {
   id: 'revenue-concentration',
   title: 'Revenue concentration',
-  description: 'How much of reported revenue and expected service charge depends on each centre.',
+  description: 'How much of reported revenue and expected service charge depends on each hospital.',
   category: 'Performance',
   dateBasis: 'Report period end and charge period end',
   filters: ['from', 'to'],
@@ -145,13 +145,13 @@ const concentration: ReportDefinition = {
     const range = dateRange(ctx);
     const org = ctx.user.organizationId;
     const scope = scopeOf(ctx);
-    const [centres, revenue, charges] = await Promise.all([
-      ctx.prisma.centre.findMany({
-        where: { organizationId: org, ...centreIdScope(ctx) },
+    const [hospitals, revenue, charges] = await Promise.all([
+      ctx.prisma.hospital.findMany({
+        where: { organizationId: org, ...hospitalIdScope(ctx) },
         select: { id: true, code: true, name: true },
       }),
       ctx.prisma.revenueReport.groupBy({
-        by: ['centreId'],
+        by: ['hospitalId'],
         where: {
           organizationId: org,
           ...scope,
@@ -162,23 +162,23 @@ const concentration: ReportDefinition = {
         _sum: { grandTotal: true },
       }),
       ctx.prisma.chargeRun.groupBy({
-        by: ['centreId'],
+        by: ['hospitalId'],
         where: { organizationId: org, ...scope, status: 'POSTED', periodEnd: range },
         _sum: { chargeTotal: true },
       }),
     ]);
-    const rev = new Map(revenue.map((r) => [r.centreId, dec(r._sum.grandTotal)]));
-    const chg = new Map(charges.map((r) => [r.centreId, dec(r._sum.chargeTotal)]));
+    const rev = new Map(revenue.map((r) => [r.hospitalId, dec(r._sum.grandTotal)]));
+    const chg = new Map(charges.map((r) => [r.hospitalId, dec(r._sum.chargeTotal)]));
     const totalRev = [...rev.values()].reduce((t, v) => t.plus(v), zero());
     const totalChg = [...chg.values()].reduce((t, v) => t.plus(v), zero());
     let cumulative = zero();
-    const rows = centres
+    const rows = hospitals
       .map((c) => ({ c, r: rev.get(c.id) ?? zero(), g: chg.get(c.id) ?? zero() }))
       .sort((a, b) => sortDesc(a.r, b.r))
       .map(({ c, r, g }) => {
         cumulative = cumulative.plus(r);
         return {
-          centre: centreLabel(c),
+          hospital: hospitalLabel(c),
           revenue: moneyString(r),
           revenueShare: pct(r, totalRev),
           cumulativeShare: pct(cumulative, totalRev),
@@ -188,7 +188,7 @@ const concentration: ReportDefinition = {
       });
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('revenue', 'Reported revenue', 'money'),
         col('revenueShare', 'Share of revenue (%)', 'percent'),
         col('cumulativeShare', 'Cumulative share (%)', 'percent'),
@@ -198,7 +198,7 @@ const concentration: ReportDefinition = {
       rows,
       notes: [
         REVENUE_NOTE,
-        'Centres are ordered by reported revenue; the cumulative share shows how few centres carry most of it.',
+        'Hospitals are ordered by reported revenue; the cumulative share shows how few hospitals carry most of it.',
       ],
     };
   },
@@ -210,7 +210,7 @@ const revenueRegister: ReportDefinition = {
   description: 'Every committed revenue report: period, days covered, totals and source file.',
   category: 'Revenue',
   dateBasis: 'Report period end',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: [],
   totals: ['grand', 'channels'],
   async run(ctx) {
@@ -223,7 +223,7 @@ const revenueRegister: ReportDefinition = {
           periodEnd: dateRange(ctx),
         },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           _count: { select: { lines: true } },
         },
         orderBy: [{ periodStart: 'asc' }],
@@ -232,7 +232,7 @@ const revenueRegister: ReportDefinition = {
     );
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('start', 'Period start', 'date'),
         col('end', 'Period end', 'date'),
         col('days', 'Days covered', 'int'),
@@ -243,7 +243,7 @@ const revenueRegister: ReportDefinition = {
         col('file', 'Source file'),
       ],
       rows: reports.map((r) => ({
-        centre: centreLabel(r.centre),
+        hospital: hospitalLabel(r.hospital),
         start: iso(r.periodStart),
         end: iso(r.periodEnd),
         variance: r.varianceApprovedAt ? `Yes, ${iso(r.varianceApprovedAt)}` : '',
@@ -268,7 +268,7 @@ const submissionRegister: ReportDefinition = {
     'Every upload: who sent it, when, its period, validation result and whether it was committed.',
   category: 'Revenue',
   dateBasis: 'Upload date',
-  filters: ['centreId', 'from', 'to', 'status'],
+  filters: ['hospitalId', 'from', 'to', 'status'],
   statuses: ['ALL', 'READY_TO_COMMIT', 'NEEDS_REVIEW', 'COMMITTED', 'FAILED'],
   requires: ['imports.read'],
   async run(ctx) {
@@ -282,7 +282,7 @@ const submissionRegister: ReportDefinition = {
           ...(status === 'ALL' ? {} : { status: status as never }),
         },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
         orderBy: [{ createdAt: 'desc' }],
@@ -292,7 +292,7 @@ const submissionRegister: ReportDefinition = {
     return {
       columns: [
         col('uploaded', 'Uploaded', 'date'),
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('file', 'File'),
         col('start', 'Period start', 'date'),
         col('end', 'Period end', 'date'),
@@ -306,7 +306,7 @@ const submissionRegister: ReportDefinition = {
         const v = (b.validationJson ?? {}) as { errors?: unknown[]; warnings?: unknown[] };
         return {
           uploaded: iso(b.createdAt),
-          centre: centreLabel(b.centre),
+          hospital: hospitalLabel(b.hospital),
           file: b.fileName ?? '',
           start: iso(b.periodStart),
           end: iso(b.periodEnd),
@@ -328,7 +328,7 @@ const importErrors: ReportDefinition = {
     'Row-level problems found in uploads that have not been committed, with what to correct.',
   category: 'Revenue',
   dateBasis: 'Upload date',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: ['imports.read'],
   async run(ctx) {
     const batches = await ctx.prisma.importBatch.findMany({
@@ -342,7 +342,7 @@ const importErrors: ReportDefinition = {
         fileName: true,
         createdAt: true,
         validationJson: true,
-        centre: { select: { code: true, name: true } },
+        hospital: { select: { code: true, name: true } },
       },
       orderBy: [{ createdAt: 'desc' }],
       take: 200,
@@ -358,7 +358,7 @@ const importErrors: ReportDefinition = {
       for (const e of errors) {
         rows.push({
           uploaded: iso(batch.createdAt),
-          centre: centreLabel(batch.centre),
+          hospital: hospitalLabel(batch.hospital),
           file: batch.fileName ?? '',
           row: e.row ?? null,
           field: e.field ?? '',
@@ -370,7 +370,7 @@ const importErrors: ReportDefinition = {
     return {
       columns: [
         col('uploaded', 'Uploaded', 'date'),
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('file', 'File'),
         col('row', 'Row', 'int'),
         col('field', 'Field'),
@@ -392,21 +392,21 @@ const variance: ReportDefinition = {
     'Department lines whose printed total differs from the sum of their channel figures.',
   category: 'Revenue',
   dateBasis: 'Report period (reports wholly inside the range)',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: [],
   totals: ['reported', 'channels', 'variance'],
   async run(ctx) {
     const lines = (await revenueLines(ctx)).filter((l) => !dec(l.variance).isZero());
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('department', 'Department'),
         col('reported', 'Printed total', 'money'),
         col('channels', 'Sum of channels', 'money'),
         col('variance', 'Difference', 'money'),
       ],
       rows: lines.map((l) => ({
-        centre: centreLabel(l.report.centre),
+        hospital: hospitalLabel(l.report.hospital),
         department: l.department.name,
         reported: moneyString(dec(l.reportedTotal)),
         channels: moneyString(dec(l.channelTotal)),
@@ -426,7 +426,7 @@ const departmentEarnings: ReportDefinition = {
     'Service charge earned by department, its share of the total, and the effective yield on its revenue base.',
   category: 'Service charges',
   dateBasis: 'End of the charge-run period',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: ['charge_runs.read'],
   totals: ['base', 'charge'],
   async run(ctx) {
@@ -488,20 +488,20 @@ const ruleConfiguration: ReportDefinition = {
     'Every agreement and charge rule with its rate, scope and effective dates, current and historical.',
   category: 'Service charges',
   dateBasis: 'Not date filtered',
-  filters: ['centreId'],
+  filters: ['hospitalId'],
   requires: ['charge_rules.read'],
   async run(ctx) {
-    const centreScope = scopeOf(ctx);
+    const hospitalScope = scopeOf(ctx);
     const rules = capped(
       await ctx.prisma.chargeRule.findMany({
-        where: { centre: { organizationId: ctx.user.organizationId }, ...centreScope },
+        where: { hospital: { organizationId: ctx.user.organizationId }, ...hospitalScope },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           department: { select: { name: true } },
           paymentChannel: { select: { code: true } },
           agreement: { select: { name: true, status: true } },
         },
-        orderBy: [{ centreId: 'asc' }, { effectiveFrom: 'asc' }],
+        orderBy: [{ hospitalId: 'asc' }, { effectiveFrom: 'asc' }],
         take: MAX_REPORT_ROWS + 1,
       }),
     ) as unknown as Array<{
@@ -512,7 +512,7 @@ const ruleConfiguration: ReportDefinition = {
       effectiveTo: Date | null;
       isActive: boolean;
       priority: number;
-      centre: { code: string; name: string };
+      hospital: { code: string; name: string };
       department: { name: string } | null;
       paymentChannel: { code: string } | null;
       agreement: { name: string; status: string } | null;
@@ -520,7 +520,7 @@ const ruleConfiguration: ReportDefinition = {
     const today = parseDate(ctx.today, 'today');
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('agreement', 'Agreement'),
         col('rule', 'Rule'),
         col('scope', 'Applies to'),
@@ -530,7 +530,7 @@ const ruleConfiguration: ReportDefinition = {
         col('state', 'State'),
       ],
       rows: rules.map((r) => ({
-        centre: centreLabel(r.centre),
+        hospital: hospitalLabel(r.hospital),
         agreement: r.agreement ? `${r.agreement.name} (${r.agreement.status.toLowerCase()})` : '',
         rule: r.name,
         scope: [
@@ -559,10 +559,10 @@ const overdueReceivables: ReportDefinition = {
   id: 'overdue-receivables',
   title: 'Overdue receivables',
   description:
-    'Balances past their due date, longest overdue first, with the centre’s payment terms.',
+    'Balances past their due date, longest overdue first, with the hospital’s payment terms.',
   category: 'Receivables',
   dateBasis: 'Due date',
-  filters: ['centreId'],
+  filters: ['hospitalId'],
   requires: ['receivables.read'],
   totals: ['balance'],
   async run(ctx) {
@@ -575,14 +575,14 @@ const overdueReceivables: ReportDefinition = {
           balance: { gt: 0 },
           dueDate: { lt: asAt },
         },
-        include: { centre: { select: { code: true, name: true, paymentTermsDays: true } } },
+        include: { hospital: { select: { code: true, name: true, paymentTermsDays: true } } },
         orderBy: [{ dueDate: 'asc' }],
         take: MAX_REPORT_ROWS + 1,
       }),
     );
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('terms', 'Terms (days)', 'int'),
         col('reference', 'Reference'),
         col('due', 'Due date', 'date'),
@@ -592,8 +592,8 @@ const overdueReceivables: ReportDefinition = {
         col('disputed', 'Disputed'),
       ],
       rows: items.map((i) => ({
-        centre: centreLabel(i.centre),
-        terms: i.centre.paymentTermsDays,
+        hospital: hospitalLabel(i.hospital),
+        terms: i.hospital.paymentTermsDays,
         reference: i.reference,
         due: iso(i.dueDate),
         days: daysOverdue(i.dueDate, asAt),
@@ -614,7 +614,7 @@ const settlementHistory: ReportDefinition = {
   description: 'Receivables that have received payments: how many, when, and what remains.',
   category: 'Payments',
   dateBasis: 'Due date',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: ['receivables.read', 'payments.read'],
   totals: ['due', 'paid', 'balance'],
   async run(ctx) {
@@ -627,7 +627,7 @@ const settlementHistory: ReportDefinition = {
           dueDate: dateRange(ctx),
         },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           allocations: { where: { reversedAt: null }, select: { allocatedAt: true } },
         },
         orderBy: [{ dueDate: 'asc' }],
@@ -636,7 +636,7 @@ const settlementHistory: ReportDefinition = {
     );
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('reference', 'Reference'),
         col('dueDate', 'Due date', 'date'),
         col('due', 'Amount due', 'money'),
@@ -650,7 +650,7 @@ const settlementHistory: ReportDefinition = {
       rows: items.map((i) => {
         const dates = i.allocations.map((a) => a.allocatedAt.getTime()).sort((a, b) => a - b);
         return {
-          centre: centreLabel(i.centre),
+          hospital: hospitalLabel(i.hospital),
           reference: i.reference,
           dueDate: iso(i.dueDate),
           due: moneyString(dec(i.originalAmount).plus(dec(i.adjustmentTotal))),
@@ -670,10 +670,10 @@ const paymentBehaviour: ReportDefinition = {
   id: 'payment-behaviour',
   title: 'Collection delay and payment-terms compliance',
   description:
-    'For settled receivables: how long after the due date each centre pays, and how often on time.',
+    'For settled receivables: how long after the due date each hospital pays, and how often on time.',
   category: 'Performance',
   dateBasis: 'Due date',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: ['receivables.read', 'payments.read'],
   async run(ctx) {
     const items = capped(
@@ -686,13 +686,13 @@ const paymentBehaviour: ReportDefinition = {
           dueDate: dateRange(ctx),
         },
         include: {
-          centre: { select: { id: true, code: true, name: true, paymentTermsDays: true } },
+          hospital: { select: { id: true, code: true, name: true, paymentTermsDays: true } },
           allocations: { where: { reversedAt: null }, select: { allocatedAt: true } },
         },
         take: MAX_REPORT_ROWS + 1,
       }),
     );
-    const byCentre = new Map<
+    const byHospital = new Map<
       string,
       {
         label: string;
@@ -707,8 +707,8 @@ const paymentBehaviour: ReportDefinition = {
       const settled = Math.max(...item.allocations.map((a) => a.allocatedAt.getTime()));
       if (!Number.isFinite(settled)) continue;
       const delay = Math.round((settled - item.dueDate.getTime()) / 86_400_000);
-      const entry = byCentre.get(item.centre.id) ?? {
-        label: centreLabel(item.centre),
+      const entry = byHospital.get(item.hospital.id) ?? {
+        label: hospitalLabel(item.hospital),
         count: 0,
         onTime: 0,
         weighted: zero(),
@@ -721,21 +721,21 @@ const paymentBehaviour: ReportDefinition = {
       entry.weighted = entry.weighted.plus(amount.times(delay));
       entry.weight = entry.weight.plus(amount);
       entry.worst = Math.max(entry.worst, delay);
-      byCentre.set(item.centre.id, entry);
+      byHospital.set(item.hospital.id, entry);
     }
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('settled', 'Settled receivables', 'int'),
         col('onTime', 'Paid by the due date', 'int'),
         col('onTimePct', 'On-time share (%)', 'percent'),
         col('delay', 'Average days after due date (amount-weighted)', 'int'),
         col('worst', 'Longest delay (days)', 'int'),
       ],
-      rows: [...byCentre.values()]
+      rows: [...byHospital.values()]
         .sort((a, b) => a.label.localeCompare(b.label))
         .map((e) => ({
-          centre: e.label,
+          hospital: e.label,
           settled: e.count,
           onTime: e.onTime,
           onTimePct: pct(new Decimal(e.onTime), new Decimal(e.count)),
@@ -743,7 +743,7 @@ const paymentBehaviour: ReportDefinition = {
           worst: e.worst,
         })),
       notes: [
-        'Uses the date of the last payment allocated to each fully settled receivable. A negative average means payment before the due date. Only settled receivables are counted, so centres with nothing settled yet do not appear.',
+        'Uses the date of the last payment allocated to each fully settled receivable. A negative average means payment before the due date. Only settled receivables are counted, so hospitals with nothing settled yet do not appear.',
       ],
     };
   },
@@ -755,7 +755,7 @@ const adjustmentRegister: ReportDefinition = {
   description: 'Adjustments with their reasons and approvals, and reversals posted to the ledger.',
   category: 'Receivables',
   dateBasis: 'Proposal date for adjustments; posting date for reversals',
-  filters: ['centreId', 'from', 'to'],
+  filters: ['hospitalId', 'from', 'to'],
   requires: ['receivables.read', 'adjustments.read'],
   totals: ['amount'],
   async run(ctx) {
@@ -767,7 +767,7 @@ const adjustmentRegister: ReportDefinition = {
           createdAt: timeRange(ctx),
         },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           receivable: { select: { reference: true } },
           createdBy: { select: { fullName: true } },
           decidedBy: { select: { fullName: true } },
@@ -783,7 +783,7 @@ const adjustmentRegister: ReportDefinition = {
           occurredAt: timeRange(ctx),
         },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           receivable: { select: { reference: true } },
         },
         orderBy: { occurredAt: 'asc' },
@@ -793,7 +793,7 @@ const adjustmentRegister: ReportDefinition = {
     const rows: ReportRow[] = [
       ...adjustments.map((a) => ({
         date: iso(a.createdAt),
-        centre: centreLabel(a.centre),
+        hospital: hospitalLabel(a.hospital),
         receivable: a.receivable.reference,
         kind: `${a.type.toLowerCase()} adjustment`,
         amount: moneyString(dec(a.amount)),
@@ -804,7 +804,7 @@ const adjustmentRegister: ReportDefinition = {
       })),
       ...reversals.map((r) => ({
         date: iso(r.occurredAt),
-        centre: centreLabel(r.centre),
+        hospital: hospitalLabel(r.hospital),
         receivable: r.receivable.reference,
         kind: 'allocation reversal',
         amount: moneyString(dec(r.debit)),
@@ -817,7 +817,7 @@ const adjustmentRegister: ReportDefinition = {
     return {
       columns: [
         col('date', 'Date', 'date'),
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('receivable', 'Receivable'),
         col('kind', 'Kind'),
         col('amount', 'Amount', 'money'),
@@ -839,7 +839,7 @@ const pendingActions: ReportDefinition = {
   title: 'Approval and pending action report',
   description: 'Everything waiting for a decision or a next step, and how long it has waited.',
   category: 'Performance',
-  filters: ['centreId'],
+  filters: ['hospitalId'],
   requires: ['imports.read'],
   async run(ctx) {
     const org = ctx.user.organizationId;
@@ -858,7 +858,7 @@ const pendingActions: ReportDefinition = {
           fileName: true,
           status: true,
           createdAt: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
         take: 500,
@@ -870,7 +870,7 @@ const pendingActions: ReportDefinition = {
           createdAt: true,
           periodStart: true,
           periodEnd: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
         take: 500,
@@ -882,7 +882,7 @@ const pendingActions: ReportDefinition = {
           reference: true,
           amount: true,
           createdAt: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
         take: 500,
@@ -894,7 +894,7 @@ const pendingActions: ReportDefinition = {
           amount: true,
           createdAt: true,
           receivable: { select: { reference: true } },
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
         take: 500,
@@ -905,7 +905,7 @@ const pendingActions: ReportDefinition = {
           asAt: true,
           amount: true,
           createdAt: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
         take: 500,
@@ -914,7 +914,7 @@ const pendingActions: ReportDefinition = {
     const rows: ReportRow[] = [
       ...imports.map((i) => ({
         kind: 'Revenue import',
-        centre: centreLabel(i.centre),
+        hospital: hospitalLabel(i.hospital),
         item: i.fileName ?? '',
         waiting:
           i.status === 'READY_TO_COMMIT'
@@ -927,7 +927,7 @@ const pendingActions: ReportDefinition = {
       })),
       ...runs.map((r) => ({
         kind: 'Charge run',
-        centre: centreLabel(r.centre),
+        hospital: hospitalLabel(r.hospital),
         item: `${iso(r.periodStart)} to ${iso(r.periodEnd)}`,
         waiting: r.status === 'SUBMITTED' ? 'approval' : 'posting',
         amount: null,
@@ -937,7 +937,7 @@ const pendingActions: ReportDefinition = {
       })),
       ...payments.map((p) => ({
         kind: 'Receipt',
-        centre: centreLabel(p.centre),
+        hospital: hospitalLabel(p.hospital),
         item: p.reference ?? '',
         waiting: p.status === 'SUBMITTED' ? 'approval' : 'posting',
         amount: moneyString(dec(p.amount)),
@@ -947,7 +947,7 @@ const pendingActions: ReportDefinition = {
       })),
       ...adjustments.map((a) => ({
         kind: `${a.type === 'CREDIT' ? 'Credit' : 'Debit'} adjustment`,
-        centre: centreLabel(a.centre),
+        hospital: hospitalLabel(a.hospital),
         item: a.receivable.reference,
         waiting: 'approval',
         amount: moneyString(dec(a.amount)),
@@ -957,7 +957,7 @@ const pendingActions: ReportDefinition = {
       })),
       ...openings.map((o) => ({
         kind: 'Opening balance',
-        centre: centreLabel(o.centre),
+        hospital: hospitalLabel(o.hospital),
         item: `as at ${iso(o.asAt)}`,
         waiting: 'approval',
         amount: moneyString(dec(o.amount)),
@@ -969,7 +969,7 @@ const pendingActions: ReportDefinition = {
     return {
       columns: [
         col('kind', 'Kind'),
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('item', 'Item'),
         col('waiting', 'Waiting for'),
         col('amount', 'Amount', 'money'),
@@ -988,7 +988,7 @@ const pendingActions: ReportDefinition = {
 const accessReport: ReportDefinition = {
   id: 'user-access',
   title: 'User access and permission report',
-  description: 'Every user with their roles, centre scope and last sign-in, for access reviews.',
+  description: 'Every user with their roles, hospital scope and last sign-in, for access reviews.',
   category: 'Performance',
   filters: [],
   requires: ['users.read'],
@@ -1000,16 +1000,16 @@ const accessReport: ReportDefinition = {
         email: true,
         isActive: true,
         lastLoginAt: true,
-        roleAssignments: { select: { centreId: true, role: { select: { name: true } } } },
+        roleAssignments: { select: { hospitalId: true, role: { select: { name: true } } } },
       },
       orderBy: { fullName: 'asc' },
       take: 2000,
     });
-    const centres = await ctx.prisma.centre.findMany({
+    const hospitals = await ctx.prisma.hospital.findMany({
       where: { organizationId: ctx.user.organizationId },
       select: { id: true, code: true },
     });
-    const code = new Map(centres.map((c) => [c.id, c.code]));
+    const code = new Map(hospitals.map((c) => [c.id, c.code]));
     return {
       columns: [
         col('name', 'Name'),
@@ -1025,7 +1025,7 @@ const accessReport: ReportDefinition = {
         roles: u.roleAssignments
           .map(
             (a) =>
-              `${a.role.name} (${a.centreId ? (code.get(a.centreId) ?? 'one centre') : 'all centres'})`,
+              `${a.role.name} (${a.hospitalId ? (code.get(a.hospitalId) ?? 'one hospital') : 'all hospitals'})`,
           )
           .join('; '),
         last: u.lastLoginAt ? iso(u.lastLoginAt) : null,
@@ -1037,15 +1037,15 @@ const accessReport: ReportDefinition = {
   },
 };
 
-const centreStatement: ReportDefinition = {
-  id: 'centre-statement',
-  title: 'Statement of account by centre',
+const hospitalStatement: ReportDefinition = {
+  id: 'hospital-statement',
+  title: 'Statement of account by hospital',
   description:
     'Opening balance, every charge, adjustment, payment and reversal in the period, and the closing balance.',
   category: 'Receivables',
   dateBasis: 'Posting date',
-  filters: ['centreId', 'from', 'to'],
-  requiresCentre: true,
+  filters: ['hospitalId', 'from', 'to'],
+  requiresHospital: true,
   requires: ['receivables.read'],
   async run(ctx) {
     const from = ctx.filters.from ? parseDate(ctx.filters.from, 'from') : null;
@@ -1111,7 +1111,7 @@ const centreStatement: ReportDefinition = {
       ],
       rows,
       notes: [
-        'The closing balance equals debits less credits in the ledger and agrees with the centre’s receivables as at the end date.',
+        'The closing balance equals debits less credits in the ledger and agrees with the hospital’s receivables as at the end date.',
       ],
     };
   },
@@ -1124,24 +1124,24 @@ const exemptions: ReportDefinition = {
     'Departments and channels exempt from the service charge, why they matter, and the revenue they kept out of the charge base.',
   category: 'Service charges',
   dateBasis: 'Not date filtered',
-  filters: ['centreId'],
+  filters: ['hospitalId'],
   requires: ['charge_rules.read', 'charge_runs.read'],
   totals: ['exemptBase'],
   async run(ctx) {
     const rules = capped(
       await ctx.prisma.chargeRule.findMany({
         where: {
-          centre: { organizationId: ctx.user.organizationId },
+          hospital: { organizationId: ctx.user.organizationId },
           ...scopeOf(ctx),
           isExempt: true,
         },
         include: {
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
           department: { select: { name: true } },
           paymentChannel: { select: { code: true } },
           agreement: { select: { name: true } },
         },
-        orderBy: [{ centreId: 'asc' }, { effectiveFrom: 'asc' }],
+        orderBy: [{ hospitalId: 'asc' }, { effectiveFrom: 'asc' }],
         take: MAX_REPORT_ROWS + 1,
       }),
     );
@@ -1154,7 +1154,7 @@ const exemptions: ReportDefinition = {
     const today = parseDate(ctx.today, 'today');
     return {
       columns: [
-        col('centre', 'Centre'),
+        col('hospital', 'Hospital'),
         col('rule', 'Rule'),
         col('scope', 'Exempt'),
         col('agreement', 'Agreement'),
@@ -1164,7 +1164,7 @@ const exemptions: ReportDefinition = {
         col('exemptBase', 'Revenue kept out of the charge', 'money'),
       ],
       rows: rules.map((r) => ({
-        centre: centreLabel(r.centre),
+        hospital: hospitalLabel(r.hospital),
         rule: r.name,
         scope: [
           r.department?.name ?? 'all departments',
@@ -1190,7 +1190,7 @@ const exemptions: ReportDefinition = {
 };
 
 export const MORE_REPORTS: ReportDefinition[] = [
-  centreStatement,
+  hospitalStatement,
   overdueReceivables,
   settlementHistory,
   paymentBehaviour,

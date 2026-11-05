@@ -39,7 +39,7 @@ export function monthKey(value: Date): string {
 
 /**
  * The calendar date (YYYY-MM-DD) that an instant falls on in the given IANA time zone.
- * Financial dates follow the centre's business day (D-016, default Africa/Lagos), not UTC.
+ * Financial dates follow the hospital's business day (D-016, default Africa/Lagos), not UTC.
  */
 export function dateInTimeZone(instant: Date, timeZone: string): string {
   let formatter: Intl.DateTimeFormat;

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useUser } from '../auth/AuthContext';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { Button, Card, EmptyState, ErrorNotice, Field, Loading, PageHeader, Pagination, Select, StatusBadge, Table, Td, Th, cx } from '../components/ui';
 import { api } from '../lib/api';
 import { formatDate, formatMoney } from '../lib/format';
@@ -14,14 +14,14 @@ export function PaymentsPage() {
   const user = useUser();
   const [params, setParams] = useSearchParams();
   const status = params.get('status') ?? '';
-  const centreId = params.get('centreId') ?? '';
+  const hospitalId = params.get('hospitalId') ?? '';
   const view = params.get('view') === 'unallocated' ? 'unallocated' : 'all';
   const page = Number(params.get('page') ?? 1);
   const query = useQuery({
-    queryKey: ['payments', view, status, centreId, page],
+    queryKey: ['payments', view, status, hospitalId, page],
     queryFn: () =>
       api<Page<Payment>>(view === 'unallocated' ? '/payments/unallocated' : '/payments', {
-        query: { centreId, status: view === 'all' ? status : undefined, page, pageSize: 20 },
+        query: { hospitalId, status: view === 'all' ? status : undefined, page, pageSize: 20 },
       }),
   });
 
@@ -37,7 +37,7 @@ export function PaymentsPage() {
     <div>
       <PageHeader
         title="Payments received"
-        subtitle="Service-charge money paid to the operator by centres. A receipt is recorded, approved and posted by different people, then allocated to receivables."
+        subtitle="Service-charge money paid to the operator by hospitals. A receipt is recorded, approved and posted by different people, then allocated to receivables."
         actions={can(user, 'payments.create') && <Link to="/payments/new"><Button>Record receipt</Button></Link>}
       />
       <Card>
@@ -56,7 +56,7 @@ export function PaymentsPage() {
           ))}
         </div>
         <div className="mb-4 grid gap-3 sm:grid-cols-3">
-          <Field label="Centre">{(id) => <CentreSelect id={id} allowAll value={centreId} onChange={(value) => setParam('centreId', value)} />}</Field>
+          <Field label="Hospital">{(id) => <HospitalSelect id={id} allowAll value={hospitalId} onChange={(value) => setParam('hospitalId', value)} />}</Field>
           {view === 'all' && (
             <Field label="Status">
               {(id) => (
@@ -74,12 +74,12 @@ export function PaymentsPage() {
         {query.data && query.data.items.length > 0 && (
           <>
             <Table caption="Payments">
-              <thead><tr><Th>Reference</Th><Th>Centre</Th><Th>Receipt date</Th><Th>Method</Th><Th>Status</Th><Th numeric>Amount</Th><Th numeric>Unallocated</Th></tr></thead>
+              <thead><tr><Th>Reference</Th><Th>Hospital</Th><Th>Receipt date</Th><Th>Method</Th><Th>Status</Th><Th numeric>Amount</Th><Th numeric>Unallocated</Th></tr></thead>
               <tbody>
                 {query.data.items.map((payment) => (
                   <tr key={payment.id} className="hover:bg-slate-50">
                     <Td><Link className="font-medium text-brand-700 hover:underline" to={`/payments/${payment.id}`}>{payment.reference ?? payment.id.slice(0, 8)}</Link></Td>
-                    <Td><div>{payment.centre.name}</div><div className="text-xs text-slate-500">{payment.centre.code}</div></Td>
+                    <Td><div>{payment.hospital.name}</div><div className="text-xs text-slate-500">{payment.hospital.code}</div></Td>
                     <Td>{formatDate(payment.receiptDate)}</Td>
                     <Td>{payment.method.replaceAll('_', ' ').toLowerCase()}</Td>
                     <Td><StatusBadge status={payment.status} /></Td>

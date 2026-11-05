@@ -12,9 +12,9 @@ export function makeSessionUser(overrides: Partial<SessionUser> = {}): SessionUs
     fullName: 'Test User',
     roleCodes: ['TEST'],
     permissions: [],
-    allCentres: true,
-    centreIds: [],
-    centres: [{ id: 'centre-1', code: 'HNB-1', name: 'Test Centre' }],
+    allHospitals: true,
+    hospitalIds: [],
+    hospitals: [{ id: 'hospital-1', code: 'HNB-1', name: 'Test Hospital' }],
     ...overrides,
   };
 }

@@ -25,9 +25,9 @@ export type SessionUser = {
   fullName: string;
   roleCodes: string[];
   permissions: string[];
-  allCentres: boolean;
-  centreIds: string[];
-  centres?: Array<{ id: string; code: string; name: string }>;
+  allHospitals: boolean;
+  hospitalIds: string[];
+  hospitals?: Array<{ id: string; code: string; name: string }>;
   mfaEnabled?: boolean;
 };
 

@@ -46,9 +46,9 @@ export function firstOfMonthIso(timeZone = 'Africa/Lagos'): string {
   return `${todayIso(timeZone).slice(0, 7)}-01`;
 }
 
-/** A centre as people say it: the name first, then its code, e.g. "University of Abuja Teaching Hospital (UATH)". */
-export function centreLabel(centre: { name: string; code: string }): string {
-  return `${centre.name} (${centre.code})`;
+/** A hospital as people say it: the name first, then its code, e.g. "University of Abuja Teaching Hospital (UATH)". */
+export function hospitalLabel(hospital: { name: string; code: string }): string {
+  return `${hospital.name} (${hospital.code})`;
 }
 
 export function titleCase(value: string): string {

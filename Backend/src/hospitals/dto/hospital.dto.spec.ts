@@ -1,14 +1,16 @@
-﻿import 'reflect-metadata';
+import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { isIanaTimeZone } from '../../common/validators/iana-time-zone';
-import { CreateCentreDto } from './centre.dto';
+import { CreateHospitalDto } from './hospital.dto';
 
-const base = { code: 'HNB-1', name: 'Centre One' };
+const base = { code: 'HNB-1', name: 'Hospital One' };
 const errorsFor = async (extra: Record<string, unknown>) =>
-  (await validate(plainToInstance(CreateCentreDto, { ...base, ...extra }))).map((e) => e.property);
+  (await validate(plainToInstance(CreateHospitalDto, { ...base, ...extra }))).map(
+    (e) => e.property,
+  );
 
-describe('centre input validation', () => {
+describe('hospital input validation', () => {
   it('accepts real IANA time zones', async () => {
     expect(await errorsFor({ timezone: 'Africa/Lagos' })).toEqual([]);
     expect(await errorsFor({ timezone: 'UTC' })).toEqual([]);

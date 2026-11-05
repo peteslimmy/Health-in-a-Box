@@ -5,7 +5,7 @@ export const PRIVILEGED_PERMISSIONS = [
   'users.manage',
   'roles.manage',
   'settings.manage',
-  'centres.onboard',
+  'hospitals.onboard',
   'platform.manage',
   'charge_rules.manage',
   'charge_runs.approve',

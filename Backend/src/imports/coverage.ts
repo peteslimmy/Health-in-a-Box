@@ -1,4 +1,4 @@
-/** A period already held in the system for the centre (dates are YYYY-MM-DD, inclusive). */
+/** A period already held in the system for the hospital (dates are YYYY-MM-DD, inclusive). */
 export type CoveredPeriod = {
   /** Report id, for COMMITTED periods. */
   id?: string;
@@ -43,7 +43,7 @@ export const range = (start: string, end: string) =>
 export const LONG_PERIOD_DAYS = 92;
 
 /**
- * Checks a new report period against what the centre already holds:
+ * Checks a new report period against what the hospital already holds:
  * - days already reported are an error (never overwritten or double counted);
  * - days skipped between the previous report and this one, or this one and the next, are flagged
  *   and must be acknowledged with a reason;
@@ -169,7 +169,7 @@ export function planTrim(input: { start: string; end: string; existing: CoveredP
     if (toDay(p.start) <= previousEnd) {
       return {
         blocked:
-          'Existing reports for this centre overlap each other, so the recorded totals cannot be subtracted safely',
+          'Existing reports for this hospital overlap each other, so the recorded totals cannot be subtracted safely',
       };
     }
     if (toDay(p.start) > cursor) gaps.push([cursor, toDay(p.start) - 1]);

@@ -18,9 +18,9 @@ describe('api client', () => {
   it('sends the bearer token and credentials, and builds the query string', async () => {
     setAccessToken('tok');
     fetchMock.mockResolvedValue(json({ ok: true }));
-    await api('/centres', { query: { status: 'ACTIVE', search: '', page: 2, none: undefined } });
+    await api('/hospitals', { query: { status: 'ACTIVE', search: '', page: 2, none: undefined } });
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('/api/v1/centres?status=ACTIVE&page=2');
+    expect(url).toBe('/api/v1/hospitals?status=ACTIVE&page=2');
     expect(init.headers.Authorization).toBe('Bearer tok');
     expect(init.credentials).toBe('include');
   });

@@ -102,7 +102,7 @@ export class OpeningBalancesController {
 
   @Post()
   @Permissions('adjustments.create')
-  @ApiOperation({ summary: 'Propose an opening balance for a centre (needs approval)' })
+  @ApiOperation({ summary: 'Propose an opening balance for a hospital (needs approval)' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateOpeningBalanceDto) {
     return this.openingBalances.create(user, dto);
   }

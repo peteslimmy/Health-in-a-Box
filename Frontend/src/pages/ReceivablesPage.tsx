@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { Button, Card, EmptyState, ErrorNotice, Field, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table, Td, Th } from '../components/ui';
 import { api } from '../lib/api';
 import { formatDate, formatMoney } from '../lib/format';
@@ -9,7 +9,7 @@ import type { Page, Receivable } from '../lib/types';
 
 export function ReceivablesPage() {
   const [params, setParams] = useSearchParams();
-  const centreId = params.get('centreId') ?? '';
+  const hospitalId = params.get('hospitalId') ?? '';
   const status = params.get('status') ?? '';
   const openOnly = params.get('openOnly') === 'true';
   const overdueOnly = params.get('overdueOnly') === 'true';
@@ -18,10 +18,10 @@ export function ReceivablesPage() {
   const [search, setSearch] = useState(params.get('search') ?? '');
 
   const query = useQuery({
-    queryKey: ['receivables', centreId, status, openOnly, overdueOnly, asAt, params.get('search'), page],
+    queryKey: ['receivables', hospitalId, status, openOnly, overdueOnly, asAt, params.get('search'), page],
     queryFn: () =>
       api<Page<Receivable>>('/receivables', {
-        query: { centreId, status, openOnly: openOnly || undefined, overdueOnly: overdueOnly || undefined, asAt, search: params.get('search'), page, pageSize: 20 },
+        query: { hospitalId, status, openOnly: openOnly || undefined, overdueOnly: overdueOnly || undefined, asAt, search: params.get('search'), page, pageSize: 20 },
       }),
   });
 
@@ -44,7 +44,7 @@ export function ReceivablesPage() {
             setParam('search', search.trim());
           }}
         >
-          <Field label="Centre">{(id) => <CentreSelect id={id} allowAll value={centreId} onChange={(value) => setParam('centreId', value)} />}</Field>
+          <Field label="Hospital">{(id) => <HospitalSelect id={id} allowAll value={hospitalId} onChange={(value) => setParam('hospitalId', value)} />}</Field>
           <Field label="Status">
             {(id) => (
               <Select id={id} value={status} onChange={(event) => setParam('status', event.target.value)}>
@@ -69,12 +69,12 @@ export function ReceivablesPage() {
         {query.data && query.data.items.length > 0 && (
           <>
             <Table caption="Receivables">
-              <thead><tr><Th>Reference</Th><Th>Centre</Th><Th>Due</Th><Th>Ageing</Th><Th>Status</Th><Th numeric>Original</Th><Th numeric>Paid</Th><Th numeric>Balance</Th></tr></thead>
+              <thead><tr><Th>Reference</Th><Th>Hospital</Th><Th>Due</Th><Th>Ageing</Th><Th>Status</Th><Th numeric>Original</Th><Th numeric>Paid</Th><Th numeric>Balance</Th></tr></thead>
               <tbody>
                 {query.data.items.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
                     <Td><Link className="font-medium text-brand-700 hover:underline" to={`/receivables/${item.id}`}>{item.reference}</Link></Td>
-                    <Td><div>{item.centre.name}</div><div className="text-xs text-slate-500">{item.centre.code}</div></Td>
+                    <Td><div>{item.hospital.name}</div><div className="text-xs text-slate-500">{item.hospital.code}</div></Td>
                     <Td>{formatDate(item.dueDate)}</Td>
                     <Td><StatusBadge status={item.ageingBucket} />{item.daysOverdue > 0 && <span className="ml-1 text-xs text-slate-500">{item.daysOverdue}d</span>}</Td>
                     <Td><StatusBadge status={item.status} /></Td>

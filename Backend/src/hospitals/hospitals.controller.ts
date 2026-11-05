@@ -3,90 +3,90 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { AuthUser } from '../common/types/auth-user';
-import { CentresService } from './centres.service';
+import { HospitalsService } from './hospitals.service';
 import {
-  CentreQueryDto,
-  CreateCentreDto,
+  HospitalQueryDto,
+  CreateHospitalDto,
   DepartmentDto,
   PaymentChannelDto,
-  UpdateCentreDto,
+  UpdateHospitalDto,
   UpdateDepartmentDto,
   UpdatePaymentChannelDto,
-} from './dto/centre.dto';
+} from './dto/hospital.dto';
 
-@ApiTags('centres')
+@ApiTags('hospitals')
 @ApiBearerAuth()
-@Controller('centres')
-export class CentresController {
-  constructor(private readonly centres: CentresService) {}
+@Controller('hospitals')
+export class HospitalsController {
+  constructor(private readonly hospitals: HospitalsService) {}
 
   @Get()
-  @Permissions('centres.read')
-  list(@CurrentUser() user: AuthUser, @Query() query: CentreQueryDto) {
-    return this.centres.list(user, query);
+  @Permissions('hospitals.read')
+  list(@CurrentUser() user: AuthUser, @Query() query: HospitalQueryDto) {
+    return this.hospitals.list(user, query);
   }
 
   @Get(':id')
-  @Permissions('centres.read')
+  @Permissions('hospitals.read')
   get(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.centres.get(user, id);
+    return this.hospitals.get(user, id);
   }
 
   @Post()
-  @Permissions('centres.create')
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateCentreDto) {
-    return this.centres.create(user, dto);
+  @Permissions('hospitals.create')
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateHospitalDto) {
+    return this.hospitals.create(user, dto);
   }
 
   @Patch(':id')
-  @Permissions('centres.update')
+  @Permissions('hospitals.update')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateCentreDto,
+    @Body() dto: UpdateHospitalDto,
   ) {
-    return this.centres.update(user, id, dto);
+    return this.hospitals.update(user, id, dto);
   }
 
   @Post(':id/departments')
-  @Permissions('centres.update')
+  @Permissions('hospitals.update')
   addDepartment(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DepartmentDto,
   ) {
-    return this.centres.addDepartment(user, id, dto);
+    return this.hospitals.addDepartment(user, id, dto);
   }
 
   @Patch(':id/departments/:departmentId')
-  @Permissions('centres.update')
+  @Permissions('hospitals.update')
   updateDepartment(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('departmentId', ParseUUIDPipe) departmentId: string,
     @Body() dto: UpdateDepartmentDto,
   ) {
-    return this.centres.updateDepartment(user, id, departmentId, dto);
+    return this.hospitals.updateDepartment(user, id, departmentId, dto);
   }
 
   @Post(':id/channels')
-  @Permissions('centres.update')
+  @Permissions('hospitals.update')
   addChannel(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: PaymentChannelDto,
   ) {
-    return this.centres.addChannel(user, id, dto);
+    return this.hospitals.addChannel(user, id, dto);
   }
 
   @Patch(':id/channels/:channelId')
-  @Permissions('centres.update')
+  @Permissions('hospitals.update')
   updateChannel(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Body() dto: UpdatePaymentChannelDto,
   ) {
-    return this.centres.updateChannel(user, id, channelId, dto);
+    return this.hospitals.updateChannel(user, id, channelId, dto);
   }
 }

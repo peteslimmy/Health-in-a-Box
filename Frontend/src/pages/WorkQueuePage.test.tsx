@@ -20,19 +20,19 @@ const queue: WorkQueue = {
     {
       key: 'late-1',
       kind: 'Late report',
-      action: 'Chase the centre',
+      action: 'Chase the hospital',
       title: 'Last report ended 20 days ago',
-      centre: 'C1 · One',
+      hospital: 'C1 · One',
       ageDays: 20,
       severity: 'urgent',
-      link: '/imports?centreId=c1',
+      link: '/imports?hospitalId=c1',
     },
     {
       key: 'adj-1',
       kind: 'Credit adjustment',
       action: 'Approve or reject',
       title: 'RCV-1 · ₦100.00',
-      centre: 'C1 · One',
+      hospital: 'C1 · One',
       ageDays: 5,
       severity: 'attention',
       link: '/adjustments',
@@ -42,7 +42,7 @@ const queue: WorkQueue = {
       kind: 'Credit adjustment',
       action: 'Approve or reject',
       title: 'RCV-2 · ₦50.00',
-      centre: 'C2 · Two',
+      hospital: 'C2 · Two',
       ageDays: 0,
       severity: 'info',
       link: '/adjustments',
@@ -60,7 +60,7 @@ describe('my work', () => {
     renderWithProviders(<WorkQueuePage />, { path: '/work', route: '/work' });
     expect(await screen.findByText('3 items · 1 urgent')).toBeInTheDocument();
     const links = screen.getAllByRole('link');
-    expect(links[0]).toHaveAttribute('href', '/imports?centreId=c1');
+    expect(links[0]).toHaveAttribute('href', '/imports?hospitalId=c1');
     expect(links[0]).toHaveTextContent('Urgent');
     expect(links[0]).toHaveTextContent('20 days');
     expect(links[2]).toHaveTextContent('today');

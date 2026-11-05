@@ -8,10 +8,10 @@ export type ReportColumn = { key: string; label: string; type: ColumnType };
 /** Money is carried as 2 dp strings, dates as YYYY-MM-DD, counts as numbers. */
 export type ReportRow = Record<string, string | number | null>;
 
-export type FilterKey = 'centreId' | 'from' | 'to' | 'status';
+export type FilterKey = 'hospitalId' | 'from' | 'to' | 'status';
 
 export type ReportFilters = {
-  centreId?: string;
+  hospitalId?: string;
   from?: string;
   to?: string;
   status?: string;
@@ -19,7 +19,7 @@ export type ReportFilters = {
 
 export type ReportContext = {
   prisma: PrismaService;
-  /** Already narrowed to the centres the caller may see for every permission the report needs. */
+  /** Already narrowed to the hospitals the caller may see for every permission the report needs. */
   user: AuthUser;
   filters: ReportFilters;
   /** Today in the organisation's business time zone (YYYY-MM-DD). */
@@ -50,8 +50,8 @@ export type ReportDefinition = {
   filters: FilterKey[];
   /** Allowed values of the status filter, when the report has one. */
   statuses?: string[];
-  /** The report is only meaningful for one centre, so a centre must be chosen. */
-  requiresCentre?: boolean;
+  /** The report is only meaningful for one hospital, so a hospital must be chosen. */
+  requiresHospital?: boolean;
   /** Permissions needed in addition to reports.read; scope is narrowed to their intersection. */
   requires: string[];
   /** Columns whose values are summed in the totals row. */

@@ -10,7 +10,7 @@ const codes = (items: Array<{ code: string }>) => items.map((item) => item.code)
 const today = '2026-10-27';
 
 describe('assessCoverage', () => {
-  it('accepts the first report for a centre without any flag', () => {
+  it('accepts the first report for a hospital without any flag', () => {
     const result = assessCoverage({ start: '2026-09-25', end: '2026-10-25', today, existing: [] });
     expect(result).toEqual({ errors: [], warnings: [], flags: [] });
   });

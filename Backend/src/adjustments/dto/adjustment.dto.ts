@@ -23,7 +23,7 @@ export class ListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -129,7 +129,7 @@ export class ResolveDisputeDto {
 export class CreateOpeningBalanceDto {
   @ApiProperty()
   @IsUUID()
-  centreId!: string;
+  hospitalId!: string;
 
   @ApiProperty({ example: '2026-08-31', description: 'The date the balance is stated as at' })
   @IsDateString()

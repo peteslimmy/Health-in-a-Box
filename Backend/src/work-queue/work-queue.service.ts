@@ -4,7 +4,7 @@ import { loadReportingStatus } from '../dashboard/reporting-status';
 import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone, parseDate } from '../common/utils/dates';
 import { moneyString } from '../common/utils/money';
-import { centreWhere, narrowUserScope } from '../common/utils/scope';
+import { hospitalWhere, narrowUserScope } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 
 const TIME_ZONE = 'Africa/Lagos';
@@ -20,7 +20,7 @@ export type WorkItem = {
   /** What the person is being asked to do. */
   action: string;
   title: string;
-  centre: string | null;
+  hospital: string | null;
   ageDays: number;
   severity: 'info' | 'attention' | 'urgent';
   link: string;
@@ -28,12 +28,13 @@ export type WorkItem = {
 
 const dec = (value: { toString(): string } | null | undefined) =>
   new Decimal(value ? value.toString() : 0);
-const centreName = (centre: { code: string; name: string }) => `${centre.code} · ${centre.name}`;
+const hospitalName = (hospital: { code: string; name: string }) =>
+  `${hospital.code} · ${hospital.name}`;
 
 /**
  * Everything waiting for this person, drawn only from the areas they may act on. Items they
  * prepared themselves are never offered for approval (segregation of duties), and every query is
- * limited to the centres where they hold the relevant permission.
+ * limited to the hospitals where they hold the relevant permission.
  */
 @Injectable()
 export class WorkQueueService {
@@ -48,7 +49,7 @@ export class WorkQueueService {
     const items: WorkItem[] = [];
     const scopeFor = (permission: string) => {
       const narrowed = narrowUserScope(user, [permission]);
-      return narrowed ? { user: narrowed, where: centreWhere(narrowed) } : null;
+      return narrowed ? { user: narrowed, where: hospitalWhere(narrowed) } : null;
     };
     const stale = (days: number): WorkItem['severity'] =>
       days > STALE_AFTER_DAYS ? 'attention' : 'info';
@@ -66,7 +67,7 @@ export class WorkQueueService {
           id: true,
           fileName: true,
           createdAt: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
         },
         orderBy: { createdAt: 'asc' },
         take: 100,
@@ -78,7 +79,7 @@ export class WorkQueueService {
           kind: 'Revenue import',
           action: 'Review and commit',
           title: r.fileName ?? 'Upload',
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: stale(days),
           link: `/imports/${r.id}`,
@@ -99,7 +100,7 @@ export class WorkQueueService {
           periodStart: true,
           periodEnd: true,
           createdAt: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
         },
         orderBy: { createdAt: 'asc' },
         take: 100,
@@ -111,7 +112,7 @@ export class WorkQueueService {
           kind: 'Service charge run',
           action,
           title: `${r.periodStart.toISOString().slice(0, 10)} to ${r.periodEnd.toISOString().slice(0, 10)}`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: stale(days),
           link: `/charge-runs/${r.id}`,
@@ -132,7 +133,7 @@ export class WorkQueueService {
           reference: true,
           amount: true,
           createdAt: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
         },
         orderBy: { createdAt: 'asc' },
         take: 100,
@@ -144,7 +145,7 @@ export class WorkQueueService {
           kind: 'Receipt',
           action,
           title: `${r.reference ?? 'Receipt'} · ${moneyString(dec(r.amount))}`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: stale(days),
           link: `/payments/${r.id}`,
@@ -168,7 +169,7 @@ export class WorkQueueService {
             amount: true,
             createdAt: true,
             receivable: { select: { reference: true } },
-            centre: { select: { code: true, name: true } },
+            hospital: { select: { code: true, name: true } },
           },
           orderBy: { createdAt: 'asc' },
           take: 100,
@@ -185,7 +186,7 @@ export class WorkQueueService {
             asAt: true,
             amount: true,
             createdAt: true,
-            centre: { select: { code: true, name: true } },
+            hospital: { select: { code: true, name: true } },
           },
           orderBy: { createdAt: 'asc' },
           take: 100,
@@ -198,7 +199,7 @@ export class WorkQueueService {
           kind: `${r.type === 'CREDIT' ? 'Credit' : 'Debit'} adjustment`,
           action: 'Approve or reject',
           title: `${r.receivable.reference} · ${moneyString(dec(r.amount))}`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: stale(days),
           link: '/adjustments',
@@ -211,7 +212,7 @@ export class WorkQueueService {
           kind: 'Opening balance',
           action: 'Approve or reject',
           title: `as at ${r.asAt.toISOString().slice(0, 10)} · ${moneyString(dec(r.amount))}`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: stale(days),
           link: '/adjustments?tab=opening-balances',
@@ -228,7 +229,7 @@ export class WorkQueueService {
           amount: true,
           raisedAt: true,
           receivable: { select: { reference: true } },
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
         },
         orderBy: { raisedAt: 'asc' },
         take: 100,
@@ -240,7 +241,7 @@ export class WorkQueueService {
           kind: 'Dispute',
           action: 'Resolve',
           title: `${r.receivable.reference} · ${moneyString(dec(r.amount))} disputed`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: days > 30 ? 'urgent' : days > 14 ? 'attention' : 'info',
           link: '/adjustments?tab=disputes',
@@ -262,7 +263,7 @@ export class WorkQueueService {
           reference: true,
           unallocatedAmount: true,
           receiptDate: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
         },
         orderBy: { receiptDate: 'asc' },
         take: 100,
@@ -275,7 +276,7 @@ export class WorkQueueService {
           kind: 'Unallocated cash',
           action: 'Allocate',
           title: `${r.reference ?? 'Receipt'} · ${moneyString(dec(r.unallocatedAmount))} unallocated`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: days,
           severity: days > 30 ? 'urgent' : 'attention',
           link: `/payments/${r.id}`,
@@ -288,17 +289,17 @@ export class WorkQueueService {
       const status = await loadReportingStatus(this.prisma, dashboard.user, today);
       for (const c of status.filter((s) => s.late)) {
         items.push({
-          key: `late-${c.centreId}`,
+          key: `late-${c.hospitalId}`,
           kind: 'Late report',
-          action: 'Chase the centre',
+          action: 'Chase the hospital',
           title:
             c.daysSince === null
               ? 'Has never reported'
               : `Last report ended ${c.daysSince} days ago`,
-          centre: `${c.code} · ${c.name}`,
+          hospital: `${c.code} · ${c.name}`,
           ageDays: c.daysSince ?? 0,
           severity: c.daysSince === null || c.daysSince > 14 ? 'urgent' : 'attention',
-          link: `/imports?centreId=${c.centreId}`,
+          link: `/imports?hospitalId=${c.hospitalId}`,
         });
       }
     }
@@ -318,7 +319,7 @@ export class WorkQueueService {
           reference: true,
           balance: true,
           dueDate: true,
-          centre: { select: { code: true, name: true } },
+          hospital: { select: { code: true, name: true } },
         },
         orderBy: { dueDate: 'asc' },
         take: 50,
@@ -329,7 +330,7 @@ export class WorkQueueService {
           kind: 'Long overdue',
           action: 'Follow up',
           title: `${r.reference} · ${moneyString(dec(r.balance))}`,
-          centre: centreName(r.centre),
+          hospital: hospitalName(r.hospital),
           ageDays: age(r.dueDate),
           severity: 'urgent',
           link: `/receivables/${r.id}`,

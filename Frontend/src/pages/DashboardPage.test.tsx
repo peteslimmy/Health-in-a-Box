@@ -54,9 +54,9 @@ const reporting = {
   asAt: '2026-10-27',
   lateAfterDays: 7,
   lateCount: 1,
-  centres: [
-    { centreId: 'c1', code: 'LATE-1', name: 'Late Centre', lastReportEnd: '2026-10-01', daysSince: 26, late: true },
-    { centreId: 'c2', code: 'OK-2', name: 'Fine Centre', lastReportEnd: '2026-10-26', daysSince: 1, late: false },
+  hospitals: [
+    { hospitalId: 'c1', code: 'LATE-1', name: 'Late Hospital', lastReportEnd: '2026-10-01', daysSince: 26, late: true },
+    { hospitalId: 'c2', code: 'OK-2', name: 'Fine Hospital', lastReportEnd: '2026-10-26', daysSince: 1, late: false },
   ],
 };
 const insights = {
@@ -68,10 +68,10 @@ const insights = {
       id: 'late-reporting',
       area: 'Reporting',
       severity: 'urgent',
-      title: '2 centres have not reported in over 7 days',
+      title: '2 hospitals have not reported in over 7 days',
       detail: 'LATE-1 (26 days)',
       evidence: [],
-      centreId: null,
+      hospitalId: null,
       link: '/reports/reporting-status',
     },
   ],
@@ -98,7 +98,7 @@ function open(permissions: string[], route = '/') {
     if (path === '/dashboard/reporting-status') return reporting;
     if (path === '/reports') return reports;
     if (path === '/dashboard/insights') return insights;
-    if (path === '/receivables/ageing') return { asAt: '2026-10-27', total: {}, centres: [] };
+    if (path === '/receivables/ageing') return { asAt: '2026-10-27', total: {}, hospitals: [] };
     throw new Error(`unexpected ${path}`);
   });
   renderWithProviders(<DashboardPage />, { path: '/', route });
@@ -120,11 +120,11 @@ describe('dashboard', () => {
   it('shows the four-step money flow in order: made, due, paid, still owing', async () => {
     open(['dashboard.read', 'receivables.read']);
     const flow = (await screen.findByRole('region', { name: 'Money flow' })) as HTMLElement;
-    const tiles = within(flow).getAllByText(/^(What the centres made|What is due to you|What the centres have paid you|What they still owe you)/);
+    const tiles = within(flow).getAllByText(/^(What the hospitals made|What is due to you|What the hospitals have paid you|What they still owe you)/);
     expect(tiles.map((t) => t.textContent)).toEqual([
-      'What the centres made',
+      'What the hospitals made',
       'What is due to you (service charge)',
-      'What the centres have paid you',
+      'What the hospitals have paid you',
       'What they still owe you (due − paid)',
     ]);
     expect(within(flow).getByText('₦1,000.00')).toBeInTheDocument();
@@ -154,13 +154,13 @@ describe('dashboard', () => {
     expect(within(group).getByRole('button', { name: 'This month' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('lists centres that are late and says how long since they reported', async () => {
+  it('lists hospitals that are late and says how long since they reported', async () => {
     open(['dashboard.read', 'receivables.read']);
-    expect(await screen.findByText(/1 centre is late/)).toBeInTheDocument();
+    expect(await screen.findByText(/1 hospital is late/)).toBeInTheDocument();
     const card = screen.getByText('Report submission').closest('section') as HTMLElement;
-    expect(within(card).getByText('Late Centre (LATE-1)')).toBeInTheDocument();
+    expect(within(card).getByText('Late Hospital (LATE-1)')).toBeInTheDocument();
     expect(within(card).getByText('26 days')).toBeInTheDocument();
-    expect(within(card).queryByText(/Fine Centre/)).toBeNull();
+    expect(within(card).queryByText(/Fine Hospital/)).toBeNull();
   });
 
   it('turns a figure into a link to its records only when the user may open that report', async () => {
@@ -179,7 +179,7 @@ describe('dashboard', () => {
 
   it('shows rule-based insights with their sentence and a link to the records', async () => {
     open(['dashboard.read', 'receivables.read']);
-    const link = await screen.findByRole('link', { name: '2 centres have not reported in over 7 days' });
+    const link = await screen.findByRole('link', { name: '2 hospitals have not reported in over 7 days' });
     expect(link).toHaveAttribute('href', '/reports/reporting-status');
     expect(screen.getByText('LATE-1 (26 days)')).toBeInTheDocument();
   });

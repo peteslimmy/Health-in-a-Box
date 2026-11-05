@@ -10,7 +10,8 @@ import { AuthUser } from '../common/types/auth-user';
 import { dateOnly, parseDate } from '../common/utils/dates';
 import { parseRate } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
+import { assertSuperAdmin } from '../common/utils/super-admin';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AgreementQueryDto,
@@ -42,12 +43,12 @@ export class ChargeConfigService {
     private readonly audit: AuditService,
   ) {}
 
-  async listAgreements(user: AuthUser, centreId: string, query: AgreementQueryDto) {
-    await this.assertCentre(user, centreId);
+  async listAgreements(user: AuthUser, hospitalId: string, query: AgreementQueryDto) {
+    await this.assertHospital(user, hospitalId);
     const { page, pageSize, skip, take } = pagination(query);
     const where: Prisma.CommercialAgreementWhereInput = {
-      centreId,
-      centre: { organizationId: user.organizationId },
+      hospitalId,
+      hospital: { organizationId: user.organizationId },
       ...(query.status ? { status: query.status } : {}),
       ...(query.search ? { name: { contains: query.search, mode: 'insensitive' } } : {}),
     };
@@ -66,8 +67,9 @@ export class ChargeConfigService {
     return paged(items, total, page, pageSize);
   }
 
-  async createAgreement(user: AuthUser, centreId: string, dto: CreateAgreementDto) {
-    await this.assertCentre(user, centreId);
+  async createAgreement(user: AuthUser, hospitalId: string, dto: CreateAgreementDto) {
+    assertSuperAdmin(user);
+    await this.assertHospital(user, hospitalId);
     const effectiveFrom = parseDate(dto.effectiveFrom, 'effectiveFrom');
     const effectiveTo = dto.effectiveTo ? parseDate(dto.effectiveTo, 'effectiveTo') : null;
     this.assertDateRange(effectiveFrom, effectiveTo);
@@ -75,7 +77,7 @@ export class ChargeConfigService {
 
     const agreement = await this.prisma.commercialAgreement.create({
       data: {
-        centreId,
+        hospitalId,
         name: dto.name.trim(),
         effectiveFrom,
         effectiveTo,
@@ -86,7 +88,7 @@ export class ChargeConfigService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId,
+      hospitalId,
       action: 'AGREEMENT_CREATED',
       targetType: 'CommercialAgreement',
       targetId: agreement.id,
@@ -97,6 +99,7 @@ export class ChargeConfigService {
   }
 
   async updateAgreement(user: AuthUser, id: string, dto: UpdateAgreementDto) {
+    assertSuperAdmin(user);
     const existing = await this.getAgreement(user, id);
     const effectiveFrom = dto.effectiveFrom
       ? parseDate(dto.effectiveFrom, 'effectiveFrom')
@@ -148,7 +151,7 @@ export class ChargeConfigService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: agreement.centreId,
+      hospitalId: agreement.hospitalId,
       action: 'AGREEMENT_UPDATED',
       targetType: 'CommercialAgreement',
       targetId: agreement.id,
@@ -163,7 +166,7 @@ export class ChargeConfigService {
     const agreement = await this.getAgreement(user, agreementId);
     const { page, pageSize, skip, take } = pagination(query);
     const where: Prisma.ChargeRuleWhereInput = {
-      centreId: agreement.centreId,
+      hospitalId: agreement.hospitalId,
       agreementId,
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
       ...(query.paymentChannelId ? { paymentChannelId: query.paymentChannelId } : {}),
@@ -191,12 +194,13 @@ export class ChargeConfigService {
   }
 
   async addRule(user: AuthUser, agreementId: string, dto: CreateChargeRuleDto) {
+    assertSuperAdmin(user);
     const agreement = await this.getAgreement(user, agreementId);
     const effectiveFrom = parseDate(dto.effectiveFrom, 'effectiveFrom');
     const effectiveTo = dto.effectiveTo ? parseDate(dto.effectiveTo, 'effectiveTo') : null;
     this.assertDateRange(effectiveFrom, effectiveTo);
     this.assertRuleInsideAgreement(agreement, effectiveFrom, effectiveTo);
-    await this.assertScope(agreement.centreId, dto.departmentId, dto.paymentChannelId);
+    await this.assertScope(agreement.hospitalId, dto.departmentId, dto.paymentChannelId);
     const rate = parseRate(dto.rate);
     const isExempt = dto.isExempt ?? false;
     this.assertExemptRate(isExempt, rate);
@@ -205,11 +209,11 @@ export class ChargeConfigService {
       departmentId: dto.departmentId ?? null,
       paymentChannelId: dto.paymentChannelId ?? null,
     };
-    await this.assertNoRuleConflict(agreement.centreId, scope, effectiveFrom, effectiveTo);
+    await this.assertNoRuleConflict(agreement.hospitalId, scope, effectiveFrom, effectiveTo);
 
     const rule = await this.prisma.chargeRule.create({
       data: {
-        centreId: agreement.centreId,
+        hospitalId: agreement.hospitalId,
         agreementId,
         ...scope,
         name: dto.name.trim(),
@@ -230,7 +234,7 @@ export class ChargeConfigService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: agreement.centreId,
+      hospitalId: agreement.hospitalId,
       action: 'CHARGE_RULE_CREATED',
       targetType: 'ChargeRule',
       targetId: rule.id,
@@ -241,15 +245,16 @@ export class ChargeConfigService {
   }
 
   async updateRule(user: AuthUser, id: string, dto: UpdateChargeRuleDto) {
+    assertSuperAdmin(user);
     const existing = await this.prisma.chargeRule.findFirst({
       where: {
         id,
-        centre: { organizationId: user.organizationId },
+        hospital: { organizationId: user.organizationId },
       },
       include: { agreement: true },
     });
     if (!existing) throw new NotFoundException('Charge rule not found');
-    assertCentreAccess(user, existing.centreId);
+    assertHospitalAccess(user, existing.hospitalId);
     const agreement =
       existing.agreement ??
       (existing.agreementId
@@ -279,7 +284,7 @@ export class ChargeConfigService {
     this.assertDateRange(effectiveFrom, effectiveTo);
     this.assertRuleInsideAgreement(agreement, effectiveFrom, effectiveTo);
     await this.assertScope(
-      existing.centreId,
+      existing.hospitalId,
       departmentId ?? undefined,
       paymentChannelId ?? undefined,
     );
@@ -297,7 +302,7 @@ export class ChargeConfigService {
     const isActive = dto.isActive ?? existing.isActive;
     if (isActive) {
       await this.assertNoRuleConflict(
-        existing.centreId,
+        existing.hospitalId,
         { departmentId, paymentChannelId },
         effectiveFrom,
         effectiveTo,
@@ -328,7 +333,7 @@ export class ChargeConfigService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: rule.centreId,
+      hospitalId: rule.hospitalId,
       action: 'CHARGE_RULE_UPDATED',
       targetType: 'ChargeRule',
       targetId: rule.id,
@@ -354,21 +359,21 @@ export class ChargeConfigService {
     const agreement = await this.prisma.commercialAgreement.findFirst({
       where: {
         id,
-        centre: { organizationId: user.organizationId },
+        hospital: { organizationId: user.organizationId },
       },
     });
     if (!agreement) throw new NotFoundException('Agreement not found');
-    assertCentreAccess(user, agreement.centreId);
+    assertHospitalAccess(user, agreement.hospitalId);
     return agreement;
   }
 
-  private async assertCentre(user: AuthUser, centreId: string) {
-    const centre = await this.prisma.centre.findFirst({
-      where: { id: centreId, organizationId: user.organizationId },
+  private async assertHospital(user: AuthUser, hospitalId: string) {
+    const hospital = await this.prisma.hospital.findFirst({
+      where: { id: hospitalId, organizationId: user.organizationId },
       select: { id: true },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    assertCentreAccess(user, centreId);
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    assertHospitalAccess(user, hospitalId);
   }
 
   private assertDateRange(from: Date, to: Date | null) {
@@ -399,35 +404,35 @@ export class ChargeConfigService {
     }
   }
 
-  private async assertScope(centreId: string, departmentId?: string, paymentChannelId?: string) {
+  private async assertScope(hospitalId: string, departmentId?: string, paymentChannelId?: string) {
     if (departmentId) {
       const department = await this.prisma.department.findFirst({
-        where: { id: departmentId, centreId },
+        where: { id: departmentId, hospitalId },
         select: { id: true },
       });
       if (!department) {
         throw new BadRequestException({
           code: 'RULE_SCOPE_INVALID',
-          message: 'Department does not belong to this centre',
+          message: 'Department does not belong to this hospital',
         });
       }
     }
     if (paymentChannelId) {
       const channel = await this.prisma.paymentChannel.findFirst({
-        where: { id: paymentChannelId, centreId },
+        where: { id: paymentChannelId, hospitalId },
         select: { id: true },
       });
       if (!channel) {
         throw new BadRequestException({
           code: 'RULE_SCOPE_INVALID',
-          message: 'Payment channel does not belong to this centre',
+          message: 'Payment channel does not belong to this hospital',
         });
       }
     }
   }
 
   private async assertNoRuleConflict(
-    centreId: string,
+    hospitalId: string,
     scope: { departmentId: string | null; paymentChannelId: string | null },
     from: Date,
     to: Date | null,
@@ -435,7 +440,7 @@ export class ChargeConfigService {
   ) {
     const existing = await this.prisma.chargeRule.findFirst({
       where: {
-        centreId,
+        hospitalId,
         departmentId: scope.departmentId,
         paymentChannelId: scope.paymentChannelId,
         isActive: true,

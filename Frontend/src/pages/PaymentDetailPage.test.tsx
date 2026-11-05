@@ -23,7 +23,7 @@ const payment = (overrides: Partial<PaymentDetail> = {}): PaymentDetail => ({
   rejectionReason: null,
   reversalReason: null,
   createdById: 'maker',
-  centre: { id: 'centre-1', code: 'HNB-1', name: 'Test Centre' },
+  hospital: { id: 'hospital-1', code: 'HNB-1', name: 'Test Hospital' },
   createdBy: { id: 'maker', fullName: 'Maker' },
   allocations: [],
   ...overrides,

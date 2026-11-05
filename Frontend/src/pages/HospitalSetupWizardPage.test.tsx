@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSessionUser, renderWithProviders } from '../test/utils';
-import { CentreSetupWizardPage } from './CentreSetupWizardPage';
+import { HospitalSetupWizardPage } from './HospitalSetupWizardPage';
 
 const hoisted = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock('../lib/api', async (importOriginal) => ({
@@ -10,7 +10,7 @@ vi.mock('../lib/api', async (importOriginal) => ({
   api: hoisted.api,
 }));
 vi.mock('../auth/AuthContext', () => ({
-  useUser: () => makeSessionUser({ permissions: ['centres.onboard'] }),
+  useUser: () => makeSessionUser({ permissions: ['hospitals.onboard'] }),
   useAuth: () => ({ status: 'signedIn' }),
 }));
 
@@ -28,7 +28,7 @@ const analysis = {
       pages: 2,
       setAsideLines: ['Director of Finance & Accounts'],
     },
-    centre: { suggestedName: 'University of Abuja Teaching Hospital, Gwagwalada', suggestedCode: 'UATH', printedNumber: null },
+    hospital: { suggestedName: 'University of Abuja Teaching Hospital, Gwagwalada', suggestedCode: 'UATH', printedNumber: null },
     departments: [
       { rowNumber: 2, printedName: 'ACCIDENT AND EMERGENCY UNIT', name: 'ACCIDENT AND EMERGENCY UNIT', code: 'ACCIDENT_AND_EMERGENCY_UNI', total: '464000.00' },
       { rowNumber: 3, printedName: 'PHARMACY', name: 'PHARMACY', code: 'PHARMACY', total: '1000.00' },
@@ -45,22 +45,22 @@ const analysis = {
 
 function start() {
   hoisted.api.mockImplementation(async (path: string, options?: { method?: string; body?: unknown }) => {
-    if (path === '/centre-setup' && !options?.method) return [{ id: 'draft-1', fileName: 'uath.pdf', createdAt: '2026-10-27T10:00:00Z', suggestedName: 'University of Abuja Teaching Hospital, Gwagwalada', departments: 2, channels: 2 }];
-    if (path === '/centre-setup/draft-1') return analysis;
-    if (path === '/centre-setup/draft-1/commit')
-      return { centre: { id: 'c1', code: 'UATH', name: 'University', status: 'ACTIVE' }, counts: { departments: 2, channels: 2 }, termsCreated: true, import: { id: 'imp-1', status: 'NEEDS_REVIEW' }, importError: null };
+    if (path === '/hospital-setup' && !options?.method) return [{ id: 'draft-1', fileName: 'uath.pdf', createdAt: '2026-10-27T10:00:00Z', suggestedName: 'University of Abuja Teaching Hospital, Gwagwalada', departments: 2, channels: 2 }];
+    if (path === '/hospital-setup/draft-1') return analysis;
+    if (path === '/hospital-setup/draft-1/commit')
+      return { hospital: { id: 'c1', code: 'UATH', name: 'University', status: 'ACTIVE' }, counts: { departments: 2, channels: 2 }, termsCreated: true, import: { id: 'imp-1', status: 'NEEDS_REVIEW' }, importError: null };
     throw new Error(`unexpected ${path}`);
   });
-  renderWithProviders(<CentreSetupWizardPage />, { path: '/', route: '/' });
+  renderWithProviders(<HospitalSetupWizardPage />, { path: '/', route: '/' });
 }
 
 async function resumeDraft() {
   await userEvent.click(await screen.findByRole('button', { name: 'Continue' }));
-  await screen.findByText('Centre named on the report');
+  await screen.findByText('Hospital named on the report');
 }
 const next = () => userEvent.click(screen.getByRole('button', { name: 'Next' }));
 
-describe('centre set-up wizard', () => {
+describe('hospital set-up wizard', () => {
   beforeEach(() => {
     hoisted.api.mockReset();
   });
@@ -71,7 +71,7 @@ describe('centre set-up wizard', () => {
     expect(screen.getByRole('button', { name: 'Read the report' })).toBeDisabled();
   });
 
-  it('shows what was found in the report: centre, period, when it was printed, counts and a tally warning', async () => {
+  it('shows what was found in the report: hospital, period, when it was printed, counts and a tally warning', async () => {
     start();
     await resumeDraft();
     expect(screen.getByText('UNIVERSITY OF ABUJA TEACHING HOSPITAL, GWAGWALADA')).toBeInTheDocument();
@@ -82,14 +82,14 @@ describe('centre set-up wizard', () => {
     expect(screen.getByText('The totals in this report do not add up')).toBeInTheDocument();
   });
 
-  it('carries the proposed centre into the form and blocks an invalid code', async () => {
+  it('carries the proposed hospital into the form and blocks an invalid code', async () => {
     start();
     await resumeDraft();
     await next();
-    expect(screen.getByLabelText('Centre code')).toHaveValue('UATH');
-    expect(screen.getByLabelText('Centre name')).toHaveValue('University of Abuja Teaching Hospital, Gwagwalada');
-    await userEvent.clear(screen.getByLabelText('Centre code'));
-    await userEvent.type(screen.getByLabelText('Centre code'), 'U');
+    expect(screen.getByLabelText('Hospital code')).toHaveValue('UATH');
+    expect(screen.getByLabelText('Hospital name')).toHaveValue('University of Abuja Teaching Hospital, Gwagwalada');
+    await userEvent.clear(screen.getByLabelText('Hospital code'));
+    await userEvent.type(screen.getByLabelText('Hospital code'), 'U');
     expect(screen.getByRole('alert')).toHaveTextContent('2 to 20 letters');
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
@@ -123,7 +123,7 @@ describe('centre set-up wizard', () => {
     expect(screen.getByText('No amounts in this report')).toBeInTheDocument();
   });
 
-  it('creates the centre with the edited lists and the terms, then links to it and to the import', async () => {
+  it('creates the hospital with the edited lists and the terms, then links to it and to the import', async () => {
     start();
     await resumeDraft();
     for (let i = 0; i < 4; i += 1) await next();
@@ -131,12 +131,12 @@ describe('centre set-up wizard', () => {
     await userEvent.type(screen.getByLabelText(/Service charge \(%/), '7.5');
     await next();
     expect(screen.getByText('7.5%')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Create the centre' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create the hospital' }));
 
     await waitFor(() => expect(screen.getByText(/University \(UATH\) is set up/)).toBeInTheDocument());
-    const commitCall = hoisted.api.mock.calls.find((c) => c[0] === '/centre-setup/draft-1/commit')!;
+    const commitCall = hoisted.api.mock.calls.find((c) => c[0] === '/hospital-setup/draft-1/commit')!;
     const body = commitCall[1].body;
-    expect(body.centre).toMatchObject({ code: 'UATH', timezone: 'Africa/Lagos', paymentTermsDays: 30 });
+    expect(body.hospital).toMatchObject({ code: 'UATH', timezone: 'Africa/Lagos', paymentTermsDays: 30 });
     expect(body.departments).toEqual([
       { printedName: 'ACCIDENT AND EMERGENCY UNIT', name: 'ACCIDENT AND EMERGENCY UNIT', code: 'ACCIDENT_AND_EMERGENCY_UNI' },
       { printedName: 'PHARMACY', name: 'PHARMACY', code: 'PHARMACY' },
@@ -146,14 +146,14 @@ describe('centre set-up wizard', () => {
     expect(screen.getByRole('link', { name: 'Open the import' })).toHaveAttribute('href', '/imports/imp-1');
   });
 
-  it('keeps the centre in draft and imports nothing when no terms are set', async () => {
+  it('keeps the hospital in draft and imports nothing when no terms are set', async () => {
     start();
     await resumeDraft();
     for (let i = 0; i < 5; i += 1) await next();
-    expect(screen.getByText('Without service-charge terms the centre is created in draft. Add its agreement on the centre page, then activate it.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Create the centre' }));
-    await waitFor(() => expect(hoisted.api.mock.calls.some((c) => c[0] === '/centre-setup/draft-1/commit')).toBe(true));
-    const body = hoisted.api.mock.calls.find((c) => c[0] === '/centre-setup/draft-1/commit')![1].body;
+    expect(screen.getByText('Without service-charge terms the hospital is created in draft. Add its agreement on the hospital page, then activate it.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Create the hospital' }));
+    await waitFor(() => expect(hoisted.api.mock.calls.some((c) => c[0] === '/hospital-setup/draft-1/commit')).toBe(true));
+    const body = hoisted.api.mock.calls.find((c) => c[0] === '/hospital-setup/draft-1/commit')![1].body;
     expect(body.terms).toBeUndefined();
     expect(body).toMatchObject({ activate: false, importNow: false });
   });

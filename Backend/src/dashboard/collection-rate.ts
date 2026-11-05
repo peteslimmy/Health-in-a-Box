@@ -3,7 +3,7 @@ import { moneyString } from '../common/utils/money';
 
 /** D-204: a receivable counts as collected on time when it is settled within this many days after its due date. */
 export const DEFAULT_COLLECTION_WINDOW_DAYS = 30;
-/** D-203: a centre is late when no report for it ends within this many days. */
+/** D-203: a hospital is late when no report for it ends within this many days. */
 export const LATE_AFTER_DAYS = 7;
 
 const DAY_MS = 86_400_000;
@@ -67,7 +67,7 @@ export type ReportingStatus = {
   late: boolean;
 };
 
-/** A centre is late when it has never reported or its latest report ended more than 7 days ago. */
+/** A hospital is late when it has never reported or its latest report ended more than 7 days ago. */
 export function reportingStatus(today: string, lastReportEnd: string | null): ReportingStatus {
   if (!lastReportEnd) return { lastReportEnd: null, daysSince: null, late: true };
   const daysSince = toDay(today) - toDay(lastReportEnd);

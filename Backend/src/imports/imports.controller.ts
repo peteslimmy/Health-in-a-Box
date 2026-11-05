@@ -39,13 +39,13 @@ export class ImportsController {
 
   @Get('template')
   @Permissions('imports.read')
-  @ApiOperation({ summary: 'Download a CSV revenue template for a centre' })
+  @ApiOperation({ summary: 'Download a CSV revenue template for a hospital' })
   async template(
     @CurrentUser() user: AuthUser,
-    @Query('centreId', new ParseUUIDPipe()) centreId: string,
+    @Query('hospitalId', new ParseUUIDPipe()) hospitalId: string,
     @Res() res: Response,
   ) {
-    const result = await this.imports.template(user, centreId);
+    const result = await this.imports.template(user, hospitalId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${result.fileName}"`);
     res.send(result.content);
@@ -80,10 +80,10 @@ export class ImportsController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['file', 'centreId'],
+      required: ['file', 'hospitalId'],
       properties: {
         file: { type: 'string', format: 'binary' },
-        centreId: { type: 'string', format: 'uuid' },
+        hospitalId: { type: 'string', format: 'uuid' },
         periodStart: { type: 'string', example: '2026-09-01' },
         periodEnd: { type: 'string', example: '2026-09-30' },
         reportDate: { type: 'string', example: '2026-09-30' },

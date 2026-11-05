@@ -1,4 +1,4 @@
-﻿import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -28,10 +28,10 @@ export class AssignmentDto {
   @IsUUID()
   roleId!: string;
 
-  @ApiPropertyOptional({ description: 'Null grants access to all centres' })
+  @ApiPropertyOptional({ description: 'Null grants access to all hospitals' })
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 }
 
 export class CreateUserDto {

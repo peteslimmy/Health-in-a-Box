@@ -118,7 +118,7 @@ export class AuthController {
 
   @Get('me')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get the current user, permissions and accessible centres' })
+  @ApiOperation({ summary: 'Get the current user, permissions and accessible hospitals' })
   me(@CurrentUser() user: AuthUser) {
     return this.authService.getProfile(user);
   }

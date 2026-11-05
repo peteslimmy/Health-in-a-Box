@@ -1,6 +1,6 @@
 import { TextItem, layoutToTable } from '../imports/pdf-report-reader';
 import {
-  codeFromCentreName,
+  codeFromHospitalName,
   codeFromName,
   findPrintedNumber,
   profileReport,
@@ -18,7 +18,7 @@ const pdfMeta = {
   ignoredLines: ['Director of Finance & Accounts'],
 };
 
-describe('reading a centre from a report', () => {
+describe('reading a hospital from a report', () => {
   const rows = [
     HEADER,
     ['1', 'ACCIDENT  AND EMERGENCY UNIT', '0.00', '0.00', '464,000.00', '464,000.00'],
@@ -32,10 +32,12 @@ describe('reading a centre from a report', () => {
     pdf: { ...pdfMeta, rows },
   });
 
-  it('proposes the centre name, a code, the period and when it was printed', () => {
-    expect(profile.centre.suggestedName).toBe('University of Abuja Teaching Hospital, Gwagwalada');
-    expect(profile.centre.suggestedCode).toBe('UATH');
-    expect(profile.centre.printedNumber).toBeNull();
+  it('proposes the hospital name, a code, the period and when it was printed', () => {
+    expect(profile.hospital.suggestedName).toBe(
+      'University of Abuja Teaching Hospital, Gwagwalada',
+    );
+    expect(profile.hospital.suggestedCode).toBe('UATH');
+    expect(profile.hospital.printedNumber).toBeNull();
     expect(profile.source.period).toEqual({ start: '2026-09-25', end: '2026-10-25' });
     expect(profile.source.printedAt).toBe('2026-10-26T18:14');
   });
@@ -88,7 +90,7 @@ describe('reading a centre from a report', () => {
 
   it('falls back to the file name for a CSV that has no title', () => {
     const result = profileReport({ fileName: 'lekki_phase_1.csv', kind: 'CSV', rows, pdf: null });
-    expect(result.centre.suggestedName).toBe('lekki phase 1');
+    expect(result.hospital.suggestedName).toBe('lekki phase 1');
   });
 
   it('lists a department that repeats only once and says so', () => {
@@ -103,28 +105,28 @@ describe('reading a centre from a report', () => {
   });
 });
 
-describe('centre number, codes and names', () => {
-  it('finds a centre number printed in the heading', () => {
-    expect(findPrintedNumber(['Centre No: UATH-014'])).toBe('UATH-014');
+describe('hospital number, codes and names', () => {
+  it('finds a hospital number printed in the heading', () => {
+    expect(findPrintedNumber(['Hospital No: UATH-014'])).toBe('UATH-014');
     expect(findPrintedNumber(['Facility Code : 0042'])).toBe('0042');
     expect(findPrintedNumber(['Print Date : 26/10/2026'])).toBeNull();
     expect(findPrintedNumber(['Director of Finance & Accounts'])).toBeNull();
   });
 
-  it('uses a printed centre number as the suggested code', () => {
+  it('uses a printed hospital number as the suggested code', () => {
     const result = profileReport({
       fileName: 'x.pdf',
       kind: 'PDF',
       rows: [HEADER, ['1', 'PHARMACY', '1', '0', '0', '1']],
-      pdf: { ...pdfMeta, rows: [], ignoredLines: ['Centre No: 77'] },
+      pdf: { ...pdfMeta, rows: [], ignoredLines: ['Hospital No: 77'] },
     });
-    expect(result.centre.printedNumber).toBe('77');
-    expect(result.centre.suggestedCode).toBe('77');
+    expect(result.hospital.printedNumber).toBe('77');
+    expect(result.hospital.suggestedCode).toBe('77');
   });
 
   it('builds codes from names', () => {
-    expect(codeFromCentreName('UNIVERSITY OF ABUJA TEACHING HOSPITAL, GWAGWALADA')).toBe('UATH');
-    expect(codeFromCentreName('Lekki Phase 1 Centre')).toBe('LP1C');
+    expect(codeFromHospitalName('UNIVERSITY OF ABUJA TEACHING HOSPITAL, GWAGWALADA')).toBe('UATH');
+    expect(codeFromHospitalName('Lekki Phase 1 Hospital')).toBe('LP1H');
     const taken = new Set<string>();
     expect(codeFromName('Mobile Money', taken)).toBe('MOBILE_MONEY');
     expect(codeFromName('Mobile  money', taken)).toBe('MOBILE_MONEY_2');

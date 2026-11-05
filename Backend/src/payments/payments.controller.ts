@@ -30,7 +30,7 @@ export class PaymentsController {
 
   @Get()
   @Permissions('payments.read')
-  @ApiOperation({ summary: "List receipts within the caller's centre scope" })
+  @ApiOperation({ summary: "List receipts within the caller's hospital scope" })
   list(@CurrentUser() user: AuthUser, @Query() query: PaymentQueryDto) {
     return this.payments.list(user, query);
   }

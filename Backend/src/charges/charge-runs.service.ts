@@ -20,7 +20,7 @@ import { AuthUser } from '../common/types/auth-user';
 import { addDays, dateInTimeZone, dateOnly, parseDate } from '../common/utils/dates';
 import { money, roundMoney } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
 import { TOTAL_TOLERANCE } from '../imports/revenue-parser.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalculateChargeRunDto, ChargeRunQueryDto } from './dto/charge-run.dto';
@@ -57,7 +57,7 @@ type CalculationLine = {
 };
 
 type Calculation = {
-  centreId: string;
+  hospitalId: string;
   periodStart: Date;
   periodEnd: Date;
   asOf: Date;
@@ -82,8 +82,8 @@ export class ChargeRunsService {
     const to = query.to ? parseDate(query.to, 'to') : undefined;
     const where: Prisma.ChargeRunWhereInput = {
       organizationId: user.organizationId,
-      ...(user.allCentres ? {} : { centreId: { in: user.centreIds } }),
-      ...(query.centreId ? { centreId: query.centreId } : {}),
+      ...(user.allHospitals ? {} : { hospitalId: { in: user.hospitalIds } }),
+      ...(query.hospitalId ? { hospitalId: query.hospitalId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(from || to
         ? {
@@ -94,7 +94,7 @@ export class ChargeRunsService {
           }
         : {}),
     };
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.chargeRun.findMany({
@@ -103,7 +103,7 @@ export class ChargeRunsService {
         skip,
         take,
         include: {
-          centre: { select: { id: true, code: true, name: true, currency: true } },
+          hospital: { select: { id: true, code: true, name: true, currency: true } },
           createdBy: { select: { id: true, fullName: true, email: true } },
           approvedBy: { select: { id: true, fullName: true, email: true } },
           _count: { select: { lines: true } },
@@ -119,10 +119,10 @@ export class ChargeRunsService {
       where: {
         id,
         organizationId: user.organizationId,
-        ...(user.allCentres ? {} : { centreId: { in: user.centreIds } }),
+        ...(user.allHospitals ? {} : { hospitalId: { in: user.hospitalIds } }),
       },
       include: {
-        centre: true,
+        hospital: true,
         createdBy: { select: { id: true, fullName: true, email: true } },
         approvedBy: { select: { id: true, fullName: true, email: true } },
         receivable: { select: { id: true, reference: true, status: true, balance: true } },
@@ -151,7 +151,7 @@ export class ChargeRunsService {
       },
     });
     if (!run) throw new NotFoundException('Charge run not found');
-    assertCentreAccess(user, run.centreId);
+    assertHospitalAccess(user, run.hospitalId);
     return run;
   }
 
@@ -160,24 +160,24 @@ export class ChargeRunsService {
     return this.toPreview(calculation);
   }
 
-  /** FR-CEN-009: only an active centre may receive financial records. */
-  private assertCentreActive(status: string) {
+  /** FR-CEN-009: only an active hospital may receive financial records. */
+  private assertHospitalActive(status: string) {
     if (status !== 'ACTIVE') {
       throw new ConflictException({
-        code: 'CENTRE_NOT_ACTIVE',
-        message: `The centre is ${status.toLowerCase()}; activate it before creating or posting charges`,
+        code: 'HOSPITAL_NOT_ACTIVE',
+        message: `The hospital is ${status.toLowerCase()}; activate it before creating or posting charges`,
       });
     }
   }
 
   async create(user: AuthUser, dto: CalculateChargeRunDto) {
     const calculation = await this.calculate(user, dto);
-    const centre = await this.prisma.centre.findUnique({
-      where: { id: calculation.centreId },
+    const hospital = await this.prisma.hospital.findUnique({
+      where: { id: calculation.hospitalId },
       select: { status: true },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    this.assertCentreActive(centre.status);
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    this.assertHospitalActive(hospital.status);
 
     const run = await this.prisma.$transaction(
       async (tx) => {
@@ -188,7 +188,7 @@ export class ChargeRunsService {
         const created = await tx.chargeRun.create({
           data: {
             organizationId: user.organizationId,
-            centreId: calculation.centreId,
+            hospitalId: calculation.hospitalId,
             periodStart: calculation.periodStart,
             periodEnd: calculation.periodEnd,
             asOf: calculation.asOf,
@@ -212,7 +212,7 @@ export class ChargeRunsService {
             },
           },
           include: {
-            centre: true,
+            hospital: true,
             lines: {
               include: {
                 department: { select: { id: true, code: true, name: true } },
@@ -225,7 +225,7 @@ export class ChargeRunsService {
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: created.centreId,
+            hospitalId: created.hospitalId,
             action: 'CHARGE_RUN_CREATED',
             targetType: 'ChargeRun',
             targetId: created.id,
@@ -266,7 +266,7 @@ export class ChargeRunsService {
     const calculation = await this.calculate(
       user,
       {
-        centreId: existing.centreId,
+        hospitalId: existing.hospitalId,
         periodStart: dateOnly(existing.periodStart),
         periodEnd: dateOnly(existing.periodEnd),
         calculationAsOfDate: dateOnly(existing.asOf),
@@ -309,7 +309,7 @@ export class ChargeRunsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: existing.centreId,
+          hospitalId: existing.hospitalId,
           action: 'CHARGE_RUN_RECALCULATED',
           targetType: 'ChargeRun',
           targetId: id,
@@ -361,7 +361,7 @@ export class ChargeRunsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: existing.centreId,
+          hospitalId: existing.hospitalId,
           action: 'CHARGE_RUN_SUBMITTED',
           targetType: 'ChargeRun',
           targetId: id,
@@ -408,7 +408,7 @@ export class ChargeRunsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: existing.centreId,
+          hospitalId: existing.hospitalId,
           action: 'CHARGE_RUN_APPROVED',
           targetType: 'ChargeRun',
           targetId: id,
@@ -439,11 +439,11 @@ export class ChargeRunsService {
         message: 'Only approved charge runs can be posted',
       });
     }
-    this.assertCentreActive(existing.centre.status);
+    this.assertHospitalActive(existing.hospital.status);
     const postedAt = new Date();
-    // D-006/D-016: the posting day and the due date follow the centre's business time zone.
-    const postedLocalDate = dateInTimeZone(postedAt, existing.centre.timezone);
-    const dueDate = addDays(parseDate(postedLocalDate), existing.centre.paymentTermsDays);
+    // D-006/D-016: the posting day and the due date follow the hospital's business time zone.
+    const postedLocalDate = dateInTimeZone(postedAt, existing.hospital.timezone);
+    const dueDate = addDays(parseDate(postedLocalDate), existing.hospital.paymentTermsDays);
 
     await this.prisma.$transaction(
       async (tx) => {
@@ -458,7 +458,7 @@ export class ChargeRunsService {
           });
         }
 
-        // P-016: one receivable item per charge run (centre x period). The individual charge
+        // P-016: one receivable item per charge run (hospital x period). The individual charge
         // lines stay traceable through the run; zero-amount lines add nothing.
         const postedTotal = existing.lines.reduce(
           (sum, line) => sum.plus(new Decimal(line.chargeAmount.toString())),
@@ -466,17 +466,17 @@ export class ChargeRunsService {
         );
         let receivableCount = 0;
         if (postedTotal.gt(0)) {
-          const reference = `RCV-${existing.centre.code}-${postedLocalDate.slice(0, 7)}-${id
+          const reference = `RCV-${existing.hospital.code}-${postedLocalDate.slice(0, 7)}-${id
             .replace(/-/g, '')
             .slice(0, 8)
             .toUpperCase()}`;
-          const description = `${existing.centre.code} service charge ${dateOnly(
+          const description = `${existing.hospital.code} service charge ${dateOnly(
             existing.periodStart,
           )} to ${dateOnly(existing.periodEnd)}`;
           const receivable = await tx.receivable.create({
             data: {
               organizationId: user.organizationId,
-              centreId: existing.centreId,
+              hospitalId: existing.hospitalId,
               chargeRunId: id,
               reference,
               description,
@@ -489,7 +489,7 @@ export class ChargeRunsService {
           await tx.ledgerEntry.create({
             data: {
               organizationId: user.organizationId,
-              centreId: existing.centreId,
+              hospitalId: existing.hospitalId,
               receivableId: receivable.id,
               type: 'CHARGE',
               debit: postedTotal,
@@ -507,7 +507,7 @@ export class ChargeRunsService {
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: existing.centreId,
+            hospitalId: existing.hospitalId,
             action: 'CHARGE_RUN_POSTED',
             targetType: 'ChargeRun',
             targetId: id,
@@ -534,7 +534,7 @@ export class ChargeRunsService {
     excludeRunId?: string,
   ): Promise<Calculation> {
     const reports = await this.loadReports(user, dto);
-    const centreId = reports[0].centreId;
+    const hospitalId = reports[0].hospitalId;
     const periodStart = new Date(
       Math.min(...reports.map((report) => report.periodStart.getTime())),
     );
@@ -546,12 +546,12 @@ export class ChargeRunsService {
 
     const [channels, rules] = await Promise.all([
       this.prisma.paymentChannel.findMany({
-        where: { centreId },
+        where: { hospitalId },
         include: { aliases: true },
       }),
       this.prisma.chargeRule.findMany({
         where: {
-          centreId,
+          hospitalId,
           isActive: true,
           effectiveFrom: { lte: periodEnd },
           OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodStart } }],
@@ -630,7 +630,7 @@ export class ChargeRunsService {
             if (!entry.channel) {
               throw new UnprocessableEntityException({
                 code: 'CHANNEL_NOT_CONFIGURED',
-                message: `Payment channel ${entry.code} is not configured for this centre`,
+                message: `Payment channel ${entry.code} is not configured for this hospital`,
                 details: [{ field: 'amountsJson', code: 'CHANNEL_NOT_CONFIGURED' }],
               });
             }
@@ -778,7 +778,7 @@ export class ChargeRunsService {
     };
 
     return {
-      centreId,
+      hospitalId,
       periodStart,
       periodEnd,
       asOf,
@@ -810,20 +810,20 @@ export class ChargeRunsService {
           message: 'One or more committed reports were not found',
         });
       }
-      const centres = [...new Set(reports.map((report) => report.centreId))];
-      if (centres.length > 1) {
+      const hospitals = [...new Set(reports.map((report) => report.hospitalId))];
+      if (hospitals.length > 1) {
         throw new BadRequestException({
-          code: 'MIXED_CENTRES',
-          message: 'A charge run can only include reports from one centre',
+          code: 'MIXED_HOSPITALS',
+          message: 'A charge run can only include reports from one hospital',
         });
       }
-      if (dto.centreId && dto.centreId !== centres[0]) {
+      if (dto.hospitalId && dto.hospitalId !== hospitals[0]) {
         throw new BadRequestException({
-          code: 'CENTRE_MISMATCH',
-          message: 'Selected reports do not belong to the requested centre',
+          code: 'HOSPITAL_MISMATCH',
+          message: 'Selected reports do not belong to the requested hospital',
         });
       }
-      assertCentreAccess(user, centres[0]);
+      assertHospitalAccess(user, hospitals[0]);
       if (dto.periodStart) {
         const requested = parseDate(dto.periodStart, 'periodStart');
         if (reports.some((report) => report.periodStart.getTime() < requested.getTime())) {
@@ -845,18 +845,18 @@ export class ChargeRunsService {
       return reports;
     }
 
-    if (!dto.centreId || !dto.periodStart || !dto.periodEnd) {
+    if (!dto.hospitalId || !dto.periodStart || !dto.periodEnd) {
       throw new BadRequestException({
         code: 'SELECTION_REQUIRED',
-        message: 'Provide reportIds or centreId with periodStart and periodEnd',
+        message: 'Provide reportIds or hospitalId with periodStart and periodEnd',
       });
     }
-    assertCentreAccess(user, dto.centreId);
-    const centre = await this.prisma.centre.findFirst({
-      where: { id: dto.centreId, organizationId: user.organizationId },
+    assertHospitalAccess(user, dto.hospitalId);
+    const hospital = await this.prisma.hospital.findFirst({
+      where: { id: dto.hospitalId, organizationId: user.organizationId },
       select: { id: true },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
+    if (!hospital) throw new NotFoundException('Hospital not found');
     const periodStart = parseDate(dto.periodStart, 'periodStart');
     const periodEnd = parseDate(dto.periodEnd, 'periodEnd');
     if (periodEnd.getTime() < periodStart.getTime()) {
@@ -868,7 +868,7 @@ export class ChargeRunsService {
     const reports = await this.prisma.revenueReport.findMany({
       where: {
         organizationId: user.organizationId,
-        centreId: dto.centreId,
+        hospitalId: dto.hospitalId,
         status: ReportStatus.COMMITTED,
         periodStart: { gte: periodStart },
         periodEnd: { lte: periodEnd },
@@ -879,7 +879,7 @@ export class ChargeRunsService {
     if (reports.length === 0) {
       throw new UnprocessableEntityException({
         code: 'NO_REVENUE_REPORTS',
-        message: 'No committed revenue reports were found for this centre and period',
+        message: 'No committed revenue reports were found for this hospital and period',
       });
     }
     return reports;
@@ -959,10 +959,10 @@ export class ChargeRunsService {
   }
 
   private toPreview(calculation: Calculation) {
-    const centreId = calculation.centreId;
-    return this.prisma.centre
+    const hospitalId = calculation.hospitalId;
+    return this.prisma.hospital
       .findUnique({
-        where: { id: centreId },
+        where: { id: hospitalId },
         select: {
           id: true,
           code: true,
@@ -972,8 +972,8 @@ export class ChargeRunsService {
           gracePeriodDays: true,
         },
       })
-      .then((centre) => ({
-        centre,
+      .then((hospital) => ({
+        hospital,
         periodStart: dateOnly(calculation.periodStart),
         periodEnd: dateOnly(calculation.periodEnd),
         calculationAsOfDate: dateOnly(calculation.asOf),

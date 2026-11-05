@@ -20,7 +20,7 @@ const NAV: Array<{ heading: string; items: NavItem[] }> = [
   },
   {
     heading: 'Setup',
-    items: [{ to: '/centres', label: 'Centres', permission: 'centres.read' }],
+    items: [{ to: '/hospitals', label: 'Hospitals', permission: 'hospitals.read' }],
   },
   {
     heading: 'Revenue and charges',
@@ -131,7 +131,7 @@ export function Layout() {
             Menu
           </Button>
           <p className="hidden text-sm text-slate-500 lg:block" aria-live="polite">
-            {user.allCentres ? 'All centres' : `${user.centreIds.length} assigned centre${user.centreIds.length === 1 ? '' : 's'}`}
+            {user.allHospitals ? 'All hospitals' : `${user.hospitalIds.length} assigned hospital${user.hospitalIds.length === 1 ? '' : 's'}`}
           </p>
           <div className="flex items-center gap-3">
             <div className="text-right text-sm">

@@ -26,7 +26,7 @@ import {
 
 const assignmentInclude = {
   role: { select: { id: true, code: true, name: true, isActive: true } },
-  centre: { select: { id: true, code: true, name: true } },
+  hospital: { select: { id: true, code: true, name: true } },
 } satisfies Prisma.UserRoleAssignmentInclude;
 
 @Injectable()
@@ -108,7 +108,7 @@ export class UsersService {
           create: dto.assignments.map((assignment) => ({
             organizationId: user.organizationId,
             roleId: assignment.roleId,
-            centreId: assignment.centreId ?? null,
+            hospitalId: assignment.hospitalId ?? null,
           })),
         },
       },
@@ -220,7 +220,7 @@ export class UsersService {
           organizationId: user.organizationId,
           userId: id,
           roleId: assignment.roleId,
-          centreId: assignment.centreId ?? null,
+          hospitalId: assignment.hospitalId ?? null,
         })),
       });
       return tx.user.findUniqueOrThrow({
@@ -421,7 +421,7 @@ export class UsersService {
     const assignments = await this.prisma.userRoleAssignment.findMany({
       where: { userId: targetId, organizationId: actor.organizationId, role: { isActive: true } },
       select: {
-        centreId: true,
+        hospitalId: true,
         role: { select: { permissions: { select: { permission: { select: { code: true } } } } } },
       },
     });
@@ -433,11 +433,11 @@ export class UsersService {
         ),
       ),
     ].filter((code) => !held.has(code));
-    // A centre-scoped administrator may only administer users who work entirely inside their own
-    // centres; otherwise replacing or resetting would reach access they do not control.
+    // A hospital-scoped administrator may only administer users who work entirely inside their own
+    // hospitals; otherwise replacing or resetting would reach access they do not control.
     const outsideScope =
-      !actor.allCentres &&
-      assignments.some((a) => !a.centreId || !actor.centreIds.includes(a.centreId));
+      !actor.allHospitals &&
+      assignments.some((a) => !a.hospitalId || !actor.hospitalIds.includes(a.hospitalId));
     if (above.length > 0 || outsideScope) {
       throw new ForbiddenException({
         code: 'ACCOUNT_OUTRANKS_YOU',
@@ -447,11 +447,11 @@ export class UsersService {
   }
 
   private assignmentSummary(
-    assignments: Array<{ role: { code: string }; centre: { code: string } | null }>,
+    assignments: Array<{ role: { code: string }; hospital: { code: string } | null }>,
   ): Prisma.InputJsonValue {
     return assignments.map((assignment) => ({
       role: assignment.role.code,
-      centre: assignment.centre?.code ?? null,
+      hospital: assignment.hospital?.code ?? null,
     }));
   }
 
@@ -461,36 +461,36 @@ export class UsersService {
   ): Promise<string[]> {
     const organizationId = actor.organizationId;
     const roleIds = [...new Set(assignments.map((assignment) => assignment.roleId))];
-    const centreIds = [
+    const hospitalIds = [
       ...new Set(
-        assignments.map((assignment) => assignment.centreId).filter((id): id is string => !!id),
+        assignments.map((assignment) => assignment.hospitalId).filter((id): id is string => !!id),
       ),
     ];
-    const [roles, centres] = await this.prisma.$transaction([
+    const [roles, hospitals] = await this.prisma.$transaction([
       this.prisma.role.findMany({
         where: { organizationId, id: { in: roleIds }, isActive: true },
         include: { permissions: { include: { permission: { select: { code: true } } } } },
       }),
-      this.prisma.centre.count({ where: { organizationId, id: { in: centreIds } } }),
+      this.prisma.hospital.count({ where: { organizationId, id: { in: hospitalIds } } }),
     ]);
     if (roles.length !== roleIds.length)
       throw new BadRequestException('One or more roles are invalid');
-    if (centres !== centreIds.length)
-      throw new BadRequestException('One or more centres are invalid');
+    if (hospitals !== hospitalIds.length)
+      throw new BadRequestException('One or more hospitals are invalid');
 
     const rolePermissions = roles.map((role) => ({
       code: role.code,
       permissions: role.permissions.map((p) => p.permission.code),
     }));
-    // ...and only for centres they can access themselves (no all-centres grants from a scoped admin).
-    if (!actor.allCentres) {
+    // ...and only for hospitals they can access themselves (no all-hospitals grants from a scoped admin).
+    if (!actor.allHospitals) {
       const outside = assignments.filter(
-        (a) => !a.centreId || !actor.centreIds.includes(a.centreId),
+        (a) => !a.hospitalId || !actor.hospitalIds.includes(a.hospitalId),
       );
       if (outside.length > 0) {
         throw new ForbiddenException({
-          code: 'CENTRE_SCOPE_EXCEEDED',
-          message: 'You can only grant access to centres you have access to yourself',
+          code: 'HOSPITAL_SCOPE_EXCEEDED',
+          message: 'You can only grant access to hospitals you have access to yourself',
         });
       }
     }
@@ -500,12 +500,12 @@ export class UsersService {
       rolePermissions.flatMap((role) => role.permissions),
     );
     assertNoRoleConflicts(rolePermissions);
-    // A super admin works across the whole organisation, never for one centre.
+    // A super admin works across the whole organisation, never for one hospital.
     const superAdminRole = roles.find((role) => role.code === SUPER_ADMIN_ROLE);
-    if (superAdminRole && assignments.some((a) => a.roleId === superAdminRole.id && a.centreId)) {
+    if (superAdminRole && assignments.some((a) => a.roleId === superAdminRole.id && a.hospitalId)) {
       throw new BadRequestException({
-        code: 'SUPER_ADMIN_ALL_CENTRES',
-        message: 'The super admin role applies to all centres',
+        code: 'SUPER_ADMIN_ALL_HOSPITALS',
+        message: 'The super admin role applies to all hospitals',
       });
     }
     return roles.map((role) => role.code);

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { Button, Card, ErrorNotice, Field, Input, Notice, PageHeader, Table, Td, Th } from '../components/ui';
 import { api } from '../lib/api';
 import { formatMoney } from '../lib/format';
@@ -11,10 +11,10 @@ export function ChargeRunNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
-  const [centreId, setCentreId] = useState(params.get('centreId') ?? '');
+  const [hospitalId, setHospitalId] = useState(params.get('hospitalId') ?? '');
   const [periodStart, setPeriodStart] = useState(params.get('periodStart') ?? '');
   const [periodEnd, setPeriodEnd] = useState(params.get('periodEnd') ?? '');
-  const body = { centreId, periodStart, periodEnd };
+  const body = { hospitalId, periodStart, periodEnd };
 
   const preview = useMutation({ mutationFn: () => api<ChargePreview>('/charge-runs/preview', { method: 'POST', body }) });
   const create = useMutation({
@@ -37,10 +37,10 @@ export function ChargeRunNewPage() {
       <PageHeader title="New charge run" subtitle="Preview first: you will see the rule, rate and amount behind every line. Committed revenue reports inside the period are used, and a revenue line can only be charged once." />
       <Card>
         <form onSubmit={submit} className="grid max-w-3xl gap-4 sm:grid-cols-3">
-          <div className="sm:col-span-3"><Field label="Centre">{(id) => <CentreSelect id={id} required value={centreId} onChange={setCentreId} />}</Field></div>
+          <div className="sm:col-span-3"><Field label="Hospital">{(id) => <HospitalSelect id={id} required value={hospitalId} onChange={setHospitalId} />}</Field></div>
           <Field label="Period start">{(id) => <Input id={id} type="date" required value={periodStart} max={periodEnd || undefined} onChange={(event) => setPeriodStart(event.target.value)} />}</Field>
           <Field label="Period end">{(id) => <Input id={id} type="date" required value={periodEnd} min={periodStart || undefined} onChange={(event) => setPeriodEnd(event.target.value)} />}</Field>
-          <div className="flex items-end"><Button type="submit" loading={preview.isPending} disabled={!centreId || !periodStart || !periodEnd}>Preview charges</Button></div>
+          <div className="flex items-end"><Button type="submit" loading={preview.isPending} disabled={!hospitalId || !periodStart || !periodEnd}>Preview charges</Button></div>
         </form>
       </Card>
 
@@ -48,7 +48,7 @@ export function ChargeRunNewPage() {
 
       {result && (
         <Card
-          title={`Preview — ${result.centre.name}`}
+          title={`Preview — ${result.hospital.name}`}
           actions={<Button loading={create.isPending} onClick={() => create.mutate()}>Create draft run</Button>}
         >
           {result.warnings.length > 0 && (

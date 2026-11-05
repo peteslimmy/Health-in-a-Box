@@ -24,7 +24,7 @@ import {
 } from './report-types';
 
 const BUSINESS_TIME_ZONE = 'Africa/Lagos';
-const FILTER_KEYS: FilterKey[] = ['centreId', 'from', 'to', 'status'];
+const FILTER_KEYS: FilterKey[] = ['hospitalId', 'from', 'to', 'status'];
 
 export type ReportQuery = ReportFilters & { page?: number; pageSize?: number };
 export type ExportFormat = 'csv' | 'xlsx';
@@ -69,7 +69,7 @@ export class ReportsService {
     return definition;
   }
 
-  /** The caller, limited to the centres where they hold every permission the report relies on. */
+  /** The caller, limited to the hospitals where they hold every permission the report relies on. */
   private scoped(user: AuthUser, definition: ReportDefinition, base: string[]): AuthUser {
     const narrowed = narrowUserScope(user, [...base, ...definition.requires]);
     if (!narrowed) {
@@ -87,10 +87,10 @@ export class ReportsService {
     for (const key of FILTER_KEYS) {
       if (definition.filters.includes(key) && query[key]) filters[key] = query[key];
     }
-    if (definition.requiresCentre && !filters.centreId) {
+    if (definition.requiresHospital && !filters.hospitalId) {
       throw new BadRequestException({
-        code: 'CENTRE_REQUIRED',
-        message: 'Choose a centre for this report',
+        code: 'HOSPITAL_REQUIRED',
+        message: 'Choose a hospital for this report',
       });
     }
     if (filters.from) parseDate(filters.from, 'from');
@@ -120,7 +120,7 @@ export class ReportsService {
       category: definition.category,
       dateBasis: definition.dateBasis ?? null,
       filters: definition.filters,
-      requiresCentre: definition.requiresCentre ?? false,
+      requiresHospital: definition.requiresHospital ?? false,
       statuses: definition.statuses ?? null,
       canExport:
         narrowUserScope(user, ['reports.export', 'reports.read', ...definition.requires]) !== null,
@@ -189,7 +189,7 @@ export class ReportsService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: filters.centreId ?? null,
+      hospitalId: filters.hospitalId ?? null,
       action: 'REPORT_EXPORTED',
       targetType: 'Report',
       summary: `Exported "${definition.title}" as ${format.toUpperCase()} (${result.rows.length} rows)`,

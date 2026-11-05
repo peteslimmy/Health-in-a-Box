@@ -14,7 +14,7 @@ import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
 import { ImportsService } from '../imports/imports.service';
 import { RevenueParserService } from '../imports/revenue-parser.service';
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 
 const url = process.env.TEST_DATABASE_URL;
 const safe = !!url && /\/[^/?]*(test|scratch)[^/?]*(\?|$)/i.test(url);
@@ -29,16 +29,16 @@ maybe('approved variance against a real database', () => {
   let runs: ChargeRunsService;
   let uploader: AuthUser;
   let approver: AuthUser;
-  let centreId: string;
+  let hospitalId: string;
   let batchId: string;
   const suffix = randomUUID().slice(0, 8);
-  const reason = 'The centre confirmed the printed total includes a cheque banked late';
+  const reason = 'The hospital confirmed the printed total includes a cheque banked late';
 
   const heldBatch = (extra: Record<string, unknown> = {}) =>
     prisma.importBatch.create({
       data: {
         organizationId: uploader.organizationId,
-        centreId,
+        hospitalId,
         status: 'NEEDS_REVIEW',
         fileName: `held-${randomUUID().slice(0, 6)}.pdf`,
         fileHash: randomUUID(),
@@ -98,32 +98,32 @@ maybe('approved variance against a real database', () => {
         },
       });
     const [u, a] = await Promise.all([mk('uploader'), mk('approver')]);
-    uploader = { ...allCentresUser(u.id), organizationId: org.id };
+    uploader = { ...allHospitalsUser(u.id), organizationId: org.id };
     approver = {
-      ...allCentresUser(a.id, ['imports.approve_variance', 'charge_runs.create']),
+      ...allHospitalsUser(a.id, ['imports.approve_variance', 'charge_runs.create']),
       organizationId: org.id,
     };
-    const centre = await prisma.centre.create({
+    const hospital = await prisma.hospital.create({
       data: {
         organizationId: org.id,
         code: `V${suffix}`.toUpperCase(),
-        name: 'Variance Centre',
+        name: 'Variance Hospital',
         status: 'ACTIVE',
       },
     });
-    centreId = centre.id;
+    hospitalId = hospital.id;
     department = (
-      await prisma.department.create({ data: { centreId, code: 'PHARM', name: 'Pharmacy' } })
+      await prisma.department.create({ data: { hospitalId, code: 'PHARM', name: 'Pharmacy' } })
     ).id;
     await prisma.paymentChannel.createMany({
       data: [
-        { centreId, code: 'CASH', name: 'Cash' },
-        { centreId, code: 'POS', name: 'POS' },
+        { hospitalId, code: 'CASH', name: 'Cash' },
+        { hospitalId, code: 'POS', name: 'POS' },
       ],
     });
     const agreement = await prisma.commercialAgreement.create({
       data: {
-        centreId,
+        hospitalId,
         name: 'Main',
         effectiveFrom: new Date('2026-01-01T00:00:00Z'),
         status: 'ACTIVE',
@@ -131,7 +131,7 @@ maybe('approved variance against a real database', () => {
     });
     await prisma.chargeRule.create({
       data: {
-        centreId,
+        hospitalId,
         agreementId: agreement.id,
         name: 'Default',
         rate: 5,
@@ -187,13 +187,13 @@ maybe('approved variance against a real database', () => {
   });
 
   it('is charged on the channel amounts: 5% of 900, not of the printed 1,000', async () => {
-    const report = await prisma.revenueReport.findFirstOrThrow({ where: { centreId } });
-    const preview = await runs.preview(approver, { centreId, reportIds: [report.id] } as never);
+    const report = await prisma.revenueReport.findFirstOrThrow({ where: { hospitalId } });
+    const preview = await runs.preview(approver, { hospitalId, reportIds: [report.id] } as never);
     expect(preview.chargeTotal).toBe('45.00');
   });
 
   it('the database refuses an approval recorded without its reason or approver', async () => {
-    const report = await prisma.revenueReport.findFirstOrThrow({ where: { centreId } });
+    const report = await prisma.revenueReport.findFirstOrThrow({ where: { hospitalId } });
     await expect(
       prisma.$executeRawUnsafe(
         `UPDATE "RevenueReport" SET "varianceReason" = 'short' WHERE id = '${report.id}'`,

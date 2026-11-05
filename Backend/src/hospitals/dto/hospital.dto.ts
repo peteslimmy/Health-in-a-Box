@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { CentreStatus } from '@prisma/client';
+import { HospitalStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -16,13 +16,13 @@ import {
 } from 'class-validator';
 import { IsIanaTimeZone } from '../../common/validators/iana-time-zone';
 
-export class CreateCentreDto {
+export class CreateHospitalDto {
   @ApiProperty({ example: 'HNB-LAG-001' })
   @IsString()
   @Length(2, 20)
   code!: string;
 
-  @ApiProperty({ example: 'Lekki Phase 1 Centre' })
+  @ApiProperty({ example: 'Lekki Phase 1 Hospital' })
   @IsString()
   @Length(2, 120)
   name!: string;
@@ -45,10 +45,10 @@ export class CreateCentreDto {
   @MaxLength(254)
   contactEmail?: string;
 
-  @ApiPropertyOptional({ enum: CentreStatus })
+  @ApiPropertyOptional({ enum: HospitalStatus })
   @IsOptional()
-  @IsEnum(CentreStatus)
-  status?: CentreStatus;
+  @IsEnum(HospitalStatus)
+  status?: HospitalStatus;
 
   @ApiPropertyOptional({ example: 'Africa/Lagos' })
   @IsOptional()
@@ -91,9 +91,9 @@ export class CreateCentreDto {
   notes?: string;
 }
 
-export class UpdateCentreDto extends PartialType(CreateCentreDto) {}
+export class UpdateHospitalDto extends PartialType(CreateHospitalDto) {}
 
-export class CentreQueryDto {
+export class HospitalQueryDto {
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -109,10 +109,10 @@ export class CentreQueryDto {
   @Max(100)
   pageSize?: number;
 
-  @ApiPropertyOptional({ enum: CentreStatus })
+  @ApiPropertyOptional({ enum: HospitalStatus })
   @IsOptional()
-  @IsEnum(CentreStatus)
-  status?: CentreStatus;
+  @IsEnum(HospitalStatus)
+  status?: HospitalStatus;
 
   @ApiPropertyOptional()
   @IsOptional()

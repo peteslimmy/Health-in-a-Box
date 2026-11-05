@@ -41,10 +41,10 @@ export type ReportProfile = {
     pages: number | null;
     setAsideLines: string[];
   };
-  centre: {
+  hospital: {
     suggestedName: string;
     suggestedCode: string;
-    /** A centre number or code printed on the report itself, if one was found. */
+    /** A hospital number or code printed on the report itself, if one was found. */
     printedNumber: string | null;
   };
   departments: ProfiledDepartment[];
@@ -86,7 +86,7 @@ export function codeFromName(name: string, taken: Set<string>): string {
 }
 
 /** `UNIVERSITY OF ABUJA TEACHING HOSPITAL, GWAGWALADA` -> `UATH`. */
-export function codeFromCentreName(name: string): string {
+export function codeFromHospitalName(name: string): string {
   const first = name.split(',')[0];
   const letters = first
     .toUpperCase()
@@ -99,11 +99,11 @@ export function codeFromCentreName(name: string): string {
 }
 
 const NUMBER_PATTERNS = [
-  /\b(?:centre|center|facility|hospital|clinic|branch|site)\s*(?:no\.?|number|code|id)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9/-]{1,19})\b/i,
+  /\b(?:hospital|center|facility|hospital|clinic|branch|site)\s*(?:no\.?|number|code|id)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9/-]{1,19})\b/i,
   /\b(?:no\.?|number|code|id)\s*[:.#-]\s*([A-Z0-9][A-Z0-9/-]{1,19})\b/i,
 ];
 
-/** Looks for a centre number printed in the report's heading block (never in the table). */
+/** Looks for a hospital number printed in the report's heading block (never in the table). */
 export function findPrintedNumber(lines: string[]): string | null {
   for (const line of lines) {
     for (const pattern of NUMBER_PATTERNS) {
@@ -126,7 +126,7 @@ function suggestName(title: string | null, fileName: string): string {
 }
 
 /**
- * Reads what a revenue report says about the centre it belongs to: its name, number, period,
+ * Reads what a revenue report says about the hospital it belongs to: its name, number, period,
  * when it was printed, and the departments and payment channels it lists. Nothing is saved here.
  */
 export function profileReport(input: {
@@ -273,9 +273,9 @@ export function profileReport(input: {
       pages: pdf?.pages ?? null,
       setAsideLines: pdf?.ignoredLines ?? [],
     },
-    centre: {
+    hospital: {
       suggestedName,
-      suggestedCode: printedNumber ?? codeFromCentreName(suggestedName),
+      suggestedCode: printedNumber ?? codeFromHospitalName(suggestedName),
       printedNumber,
     },
     departments,

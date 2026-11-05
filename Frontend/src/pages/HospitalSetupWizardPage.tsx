@@ -3,7 +3,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, ErrorNotice, Field, Input, Loading, Notice, PageHeader, cx } from '../components/ui';
 import { api } from '../lib/api';
-import { centreLabel, formatDate, formatMoney, firstOfMonthIso } from '../lib/format';
+import { hospitalLabel, formatDate, formatMoney, firstOfMonthIso } from '../lib/format';
 
 type Profile = {
   source: {
@@ -16,7 +16,7 @@ type Profile = {
     pages: number | null;
     setAsideLines: string[];
   };
-  centre: { suggestedName: string; suggestedCode: string; printedNumber: string | null };
+  hospital: { suggestedName: string; suggestedCode: string; printedNumber: string | null };
   departments: Array<{ rowNumber: number; printedName: string; name: string; code: string; total: string }>;
   channels: Array<{ printedHeading: string; name: string; code: string; total: string; hasActivity: boolean }>;
   grandTotal: string;
@@ -31,15 +31,15 @@ type Analysis = {
 type OpenDraft = { id: string; fileName: string; createdAt: string; suggestedName: string; departments: number; channels: number };
 type Item = { printedName: string; name: string; code: string; total: string; include: boolean; extra?: string };
 type CommitResult = {
-  centre: { id: string; code: string; name: string; status: string };
+  hospital: { id: string; code: string; name: string; status: string };
   counts: { departments: number; channels: number };
   termsCreated: boolean;
   import: { id: string; status: string } | null;
   importError: string | null;
 };
 
-const STEPS = ['Upload report', 'What was found', 'Centre', 'Departments', 'Payment channels', 'Service charge', 'Review and create'] as const;
-const CENTRE_CODE = /^[A-Za-z0-9][A-Za-z0-9_-]{1,19}$/;
+const STEPS = ['Upload report', 'What was found', 'Hospital', 'Departments', 'Payment channels', 'Service charge', 'Review and create'] as const;
+const HOSPITAL_CODE = /^[A-Za-z0-9][A-Za-z0-9_-]{1,19}$/;
 const ITEM_CODE = /^[A-Za-z0-9][A-Za-z0-9_]{1,25}$/;
 const squash = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -183,24 +183,24 @@ function ItemTable({
   );
 }
 
-export function CentreSetupWizardPage() {
+export function HospitalSetupWizardPage() {
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [centre, setCentre] = useState({ code: '', name: '', address: '', timezone: 'Africa/Lagos', paymentTermsDays: '30', gracePeriodDays: '0' });
+  const [hospital, setHospital] = useState({ code: '', name: '', address: '', timezone: 'Africa/Lagos', paymentTermsDays: '30', gracePeriodDays: '0' });
   const [departments, setDepartments] = useState<Item[]>([]);
   const [channels, setChannels] = useState<Item[]>([]);
   const [terms, setTerms] = useState({ enabled: false, name: '', rate: '', from: '' });
   const [options, setOptions] = useState({ activate: true, importNow: true });
   const [result, setResult] = useState<CommitResult | null>(null);
 
-  const open = useQuery({ queryKey: ['centre-setup-drafts'], queryFn: () => api<OpenDraft[]>('/centre-setup') });
+  const open = useQuery({ queryKey: ['hospital-setup-drafts'], queryFn: () => api<OpenDraft[]>('/hospital-setup') });
 
   function adopt(next: Analysis) {
     const { profile } = next;
     setAnalysis(next);
-    setCentre({ code: profile.centre.suggestedCode, name: profile.centre.suggestedName, address: '', timezone: 'Africa/Lagos', paymentTermsDays: '30', gracePeriodDays: '0' });
+    setHospital({ code: profile.hospital.suggestedCode, name: profile.hospital.suggestedName, address: '', timezone: 'Africa/Lagos', paymentTermsDays: '30', gracePeriodDays: '0' });
     setDepartments(profile.departments.map((d) => ({ printedName: d.printedName, name: d.name, code: d.code, total: d.total, include: true })));
     setChannels(
       profile.channels.map((c) => ({ printedName: c.printedHeading, name: c.name, code: c.code, total: c.total, include: true, extra: c.hasActivity ? '' : 'No amounts in this report' })),
@@ -213,30 +213,30 @@ export function CentreSetupWizardPage() {
     mutationFn: () => {
       const form = new FormData();
       form.set('file', file!);
-      return api<Analysis>('/centre-setup/analyse', { method: 'POST', form });
+      return api<Analysis>('/hospital-setup/analyse', { method: 'POST', form });
     },
     onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ['centre-setup-drafts'] });
+      void queryClient.invalidateQueries({ queryKey: ['hospital-setup-drafts'] });
       adopt(data);
     },
   });
-  const resume = useMutation({ mutationFn: (id: string) => api<Analysis>(`/centre-setup/${id}`), onSuccess: adopt });
+  const resume = useMutation({ mutationFn: (id: string) => api<Analysis>(`/hospital-setup/${id}`), onSuccess: adopt });
   const discard = useMutation({
-    mutationFn: (id: string) => api(`/centre-setup/${id}/cancel`, { method: 'POST' }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['centre-setup-drafts'] }),
+    mutationFn: (id: string) => api(`/hospital-setup/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['hospital-setup-drafts'] }),
   });
   const commit = useMutation({
     mutationFn: () =>
-      api<CommitResult>(`/centre-setup/${analysis!.draftId}/commit`, {
+      api<CommitResult>(`/hospital-setup/${analysis!.draftId}/commit`, {
         method: 'POST',
         body: {
-          centre: {
-            code: centre.code.trim(),
-            name: centre.name.trim(),
-            ...(centre.address.trim() && { address: centre.address.trim() }),
-            timezone: centre.timezone.trim(),
-            paymentTermsDays: Number(centre.paymentTermsDays),
-            gracePeriodDays: Number(centre.gracePeriodDays),
+          hospital: {
+            code: hospital.code.trim(),
+            name: hospital.name.trim(),
+            ...(hospital.address.trim() && { address: hospital.address.trim() }),
+            timezone: hospital.timezone.trim(),
+            paymentTermsDays: Number(hospital.paymentTermsDays),
+            gracePeriodDays: Number(hospital.gracePeriodDays),
           },
           departments: includedDepartments.map(({ printedName, name, code }) => ({ printedName, name: name.trim(), code })),
           channels: includedChannels.map(({ printedName, name, code }) => ({ printedName, name: name.trim(), code })),
@@ -247,20 +247,20 @@ export function CentreSetupWizardPage() {
       }),
     onSuccess: (data) => {
       setResult(data);
-      void queryClient.invalidateQueries({ queryKey: ['centres'] });
-      void queryClient.invalidateQueries({ queryKey: ['centre-setup-drafts'] });
+      void queryClient.invalidateQueries({ queryKey: ['hospitals'] });
+      void queryClient.invalidateQueries({ queryKey: ['hospital-setup-drafts'] });
     },
   });
 
   const includedDepartments = useMemo(() => departments.filter((d) => d.include), [departments]);
   const includedChannels = useMemo(() => channels.filter((c) => c.include), [channels]);
 
-  const centreProblems: string[] = [];
-  if (!CENTRE_CODE.test(centre.code.trim())) centreProblems.push('The centre code must be 2 to 20 letters, digits, dashes or underscores.');
-  if (centre.name.trim().length < 2) centreProblems.push('The centre needs a name.');
+  const hospitalProblems: string[] = [];
+  if (!HOSPITAL_CODE.test(hospital.code.trim())) hospitalProblems.push('The hospital code must be 2 to 20 letters, digits, dashes or underscores.');
+  if (hospital.name.trim().length < 2) hospitalProblems.push('The hospital needs a name.');
   const days = (value: string, max: number) => /^\d+$/.test(value) && Number(value) <= max;
-  if (!days(centre.paymentTermsDays, 365)) centreProblems.push('Payment terms must be a whole number of days, up to 365.');
-  if (!days(centre.gracePeriodDays, 90)) centreProblems.push('The grace period must be a whole number of days, up to 90.');
+  if (!days(hospital.paymentTermsDays, 365)) hospitalProblems.push('Payment terms must be a whole number of days, up to 365.');
+  if (!days(hospital.gracePeriodDays, 90)) hospitalProblems.push('The grace period must be a whole number of days, up to 90.');
   const departmentProblems = [...listProblems(departments, 'department'), ...(includedDepartments.length === 0 ? ['Include at least one department.'] : [])];
   const channelProblems = [...listProblems(channels, 'payment channel'), ...(includedChannels.length === 0 ? ['Include at least one payment channel.'] : [])];
   const termsProblems: string[] = [];
@@ -270,7 +270,7 @@ export function CentreSetupWizardPage() {
     if (terms.name.trim().length < 2) termsProblems.push('Name the agreement.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(terms.from)) termsProblems.push('Choose the date the agreement starts.');
   }
-  const blockers = [[], [], centreProblems, departmentProblems, channelProblems, termsProblems, []] as string[][];
+  const blockers = [[], [], hospitalProblems, departmentProblems, channelProblems, termsProblems, []] as string[][];
   const canNext = step < STEPS.length - 1 && (blockers[step] ?? []).length === 0;
 
   function onUpload(event: FormEvent) {
@@ -281,11 +281,11 @@ export function CentreSetupWizardPage() {
   if (result) {
     return (
       <div className="max-w-3xl">
-        <PageHeader title="Centre created" />
+        <PageHeader title="Hospital created" />
         <Card>
-          <Notice tone="good" title={`${centreLabel(result.centre)} is set up`}>
+          <Notice tone="good" title={`${hospitalLabel(result.hospital)} is set up`}>
             {result.counts.departments} departments and {result.counts.channels} payment channels were created
-            {result.termsCreated ? ', with its service-charge terms' : ''}. The centre is {result.centre.status === 'ACTIVE' ? 'active' : 'in draft until its terms are added and it is activated'}.
+            {result.termsCreated ? ', with its service-charge terms' : ''}. The hospital is {result.hospital.status === 'ACTIVE' ? 'active' : 'in draft until its terms are added and it is activated'}.
           </Notice>
           {result.import && (
             <Notice tone="info" title="The report was uploaded and checked">
@@ -296,14 +296,14 @@ export function CentreSetupWizardPage() {
             </Notice>
           )}
           {result.importError && (
-            <Notice tone="warn" title="The centre was created, but the report was not imported">
+            <Notice tone="warn" title="The hospital was created, but the report was not imported">
               {result.importError}. You can upload it from Revenue imports.
             </Notice>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link to={`/centres/${result.centre.id}`}><Button>Open the centre</Button></Link>
+            <Link to={`/hospitals/${result.hospital.id}`}><Button>Open the hospital</Button></Link>
             <Button variant="secondary" onClick={() => { setResult(null); setAnalysis(null); setFile(null); setStep(0); }}>
-              Set up another centre
+              Set up another hospital
             </Button>
           </div>
         </Card>
@@ -315,8 +315,8 @@ export function CentreSetupWizardPage() {
   return (
     <div className="max-w-5xl space-y-4">
       <PageHeader
-        title="Set up a centre from a report"
-        subtitle="Upload a revenue report and this wizard proposes the centre, its departments and payment channels. You review and adjust every step before anything is created. Only a super admin can use it."
+        title="Set up a hospital from a report"
+        subtitle="Upload a revenue report and this wizard proposes the hospital, its departments and payment channels. You review and adjust every step before anything is created. Only a super admin can use it."
       />
       <Card>
         <Stepper step={step} />
@@ -324,7 +324,7 @@ export function CentreSetupWizardPage() {
 
       {step === 0 && (
         <>
-          <Card title="1. Upload a report from the centre">
+          <Card title="1. Upload a report from the hospital">
             <form onSubmit={onUpload} className="space-y-4">
               <Field label="Report file" hint="PDF, CSV or XLSX, up to 15 MB. Nothing is created yet; the file is read and kept as a draft.">
                 {(id) => <Input id={id} type="file" accept=".pdf,.csv,.xlsx,application/pdf,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />}
@@ -365,8 +365,8 @@ export function CentreSetupWizardPage() {
           {step === 1 && (
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Fact label="Centre named on the report" value={profile.source.title ?? 'No title found'} />
-                <Fact label="Centre number" value={profile.centre.printedNumber ?? 'None printed'} hint={profile.centre.printedNumber ? undefined : 'A code is suggested instead; you can change it.'} />
+                <Fact label="Hospital named on the report" value={profile.source.title ?? 'No title found'} />
+                <Fact label="Hospital number" value={profile.hospital.printedNumber ?? 'None printed'} hint={profile.hospital.printedNumber ? undefined : 'A code is suggested instead; you can change it.'} />
                 <Fact label="Period covered" value={profile.source.period ? `${formatDate(profile.source.period.start)} – ${formatDate(profile.source.period.end)}` : 'Not stated'} />
                 <Fact label="Report produced at the source" value={formatPrinted(profile.source.printedAt)} />
                 <Fact label="Departments" value={profile.departments.length} />
@@ -375,15 +375,15 @@ export function CentreSetupWizardPage() {
                 <Fact label="File" value={profile.source.fileName} hint={`${profile.source.kind}${profile.source.pages ? `, ${profile.source.pages} pages` : ''}`} />
               </div>
               {analysis!.existingMatches.length > 0 && (
-                <Notice tone="warn" title="A matching centre already exists">
-                  {analysis!.existingMatches.map((m) => `${centreLabel(m)}: ${m.reason.toLowerCase()}`).join('; ')}. This wizard creates new centres. To add departments to an existing centre, upload the report as an import and tick “add missing departments and channels”.
+                <Notice tone="warn" title="A matching hospital already exists">
+                  {analysis!.existingMatches.map((m) => `${hospitalLabel(m)}: ${m.reason.toLowerCase()}`).join('; ')}. This wizard creates new hospitals. To add departments to an existing hospital, upload the report as an import and tick “add missing departments and channels”.
                 </Notice>
               )}
               {profile.tally.ok ? (
                 <Notice tone="good" title="The report's totals add up">Every department and channel total agrees with the grand total.</Notice>
               ) : (
                 <Notice tone="warn" title="The totals in this report do not add up">
-                  <p>Setting up the centre does not depend on this, but the report cannot be imported until the centre sends a corrected one.</p>
+                  <p>Setting up the hospital does not depend on this, but the report cannot be imported until the hospital sends a corrected one.</p>
                   <ul className="mt-1 list-disc pl-5">
                     {profile.tally.problems.slice(0, 6).map((p, i) => (
                       <li key={i}>{p.message}</li>
@@ -405,16 +405,16 @@ export function CentreSetupWizardPage() {
 
           {step === 2 && (
             <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
-              <Field label="Centre code" hint={profile.centre.printedNumber ? 'The number printed on the report' : 'Suggested from the name; must be unique'}>
-                {(id) => <Input id={id} className="font-mono uppercase" value={centre.code} onChange={(event) => setCentre({ ...centre, code: event.target.value.toUpperCase() })} />}
+              <Field label="Hospital code" hint={profile.hospital.printedNumber ? 'The number printed on the report' : 'Suggested from the name; must be unique'}>
+                {(id) => <Input id={id} className="font-mono uppercase" value={hospital.code} onChange={(event) => setHospital({ ...hospital, code: event.target.value.toUpperCase() })} />}
               </Field>
-              <Field label="Centre name">{(id) => <Input id={id} value={centre.name} onChange={(event) => setCentre({ ...centre, name: event.target.value })} />}</Field>
-              <Field label="Address (optional)">{(id) => <Input id={id} value={centre.address} onChange={(event) => setCentre({ ...centre, address: event.target.value })} />}</Field>
-              <Field label="Time zone" hint="Decides the business day for dates">{(id) => <Input id={id} value={centre.timezone} onChange={(event) => setCentre({ ...centre, timezone: event.target.value })} />}</Field>
+              <Field label="Hospital name">{(id) => <Input id={id} value={hospital.name} onChange={(event) => setHospital({ ...hospital, name: event.target.value })} />}</Field>
+              <Field label="Address (optional)">{(id) => <Input id={id} value={hospital.address} onChange={(event) => setHospital({ ...hospital, address: event.target.value })} />}</Field>
+              <Field label="Time zone" hint="Decides the business day for dates">{(id) => <Input id={id} value={hospital.timezone} onChange={(event) => setHospital({ ...hospital, timezone: event.target.value })} />}</Field>
               <Field label="Payment terms (days)" hint="How long after a charge is posted it falls due">
-                {(id) => <Input id={id} inputMode="numeric" value={centre.paymentTermsDays} onChange={(event) => setCentre({ ...centre, paymentTermsDays: event.target.value })} />}
+                {(id) => <Input id={id} inputMode="numeric" value={hospital.paymentTermsDays} onChange={(event) => setHospital({ ...hospital, paymentTermsDays: event.target.value })} />}
               </Field>
-              <Field label="Grace period (days)">{(id) => <Input id={id} inputMode="numeric" value={centre.gracePeriodDays} onChange={(event) => setCentre({ ...centre, gracePeriodDays: event.target.value })} />}</Field>
+              <Field label="Grace period (days)">{(id) => <Input id={id} inputMode="numeric" value={hospital.gracePeriodDays} onChange={(event) => setHospital({ ...hospital, gracePeriodDays: event.target.value })} />}</Field>
             </form>
           )}
 
@@ -427,7 +427,7 @@ export function CentreSetupWizardPage() {
 
           {step === 4 && (
             <div className="space-y-3">
-              <p className="text-sm text-slate-600">These are the payment methods the centre collects through. Channels with no amounts in this report are kept because they may be used in other months.</p>
+              <p className="text-sm text-slate-600">These are the payment methods the hospital collects through. Channels with no amounts in this report are kept because they may be used in other months.</p>
               <ItemTable kind="channel" items={channels} onChange={setChannels} showTotal extraLabel="Note" />
             </div>
           )}
@@ -438,7 +438,7 @@ export function CentreSetupWizardPage() {
                 <input type="checkbox" className="mt-1" checked={terms.enabled} onChange={(event) => setTerms({ ...terms, enabled: event.target.checked })} />
                 <span>
                   Set the service charge now
-                  <span className="block text-xs text-slate-500">One percentage that applies to every department and channel from the start date. Exceptions can be added later on the centre page. If you skip this the centre stays in draft.</span>
+                  <span className="block text-xs text-slate-500">One percentage that applies to every department and channel from the start date. Exceptions can be added later on the hospital page. If you skip this the hospital stays in draft.</span>
                 </span>
               </label>
               {terms.enabled && (
@@ -456,16 +456,16 @@ export function CentreSetupWizardPage() {
           {step === 6 && (
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Fact label="Centre" value={centre.code.toUpperCase()} hint={centre.name} />
+                <Fact label="Hospital" value={hospital.code.toUpperCase()} hint={hospital.name} />
                 <Fact label="Departments" value={includedDepartments.length} />
                 <Fact label="Payment channels" value={includedChannels.length} />
-                <Fact label="Service charge" value={terms.enabled ? `${terms.rate}%` : 'Not set'} hint={terms.enabled ? `from ${formatDate(terms.from)}` : 'Centre stays in draft'} />
+                <Fact label="Service charge" value={terms.enabled ? `${terms.rate}%` : 'Not set'} hint={terms.enabled ? `from ${formatDate(terms.from)}` : 'Hospital stays in draft'} />
               </div>
               {terms.enabled && (
                 <div className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
                   <label className="flex items-start gap-2">
                     <input type="checkbox" className="mt-1" checked={options.activate} onChange={(event) => setOptions({ ...options, activate: event.target.checked, importNow: event.target.checked && options.importNow })} />
-                    <span>Activate the centre now <span className="block text-xs text-slate-500">Active centres can receive revenue reports and charges.</span></span>
+                    <span>Activate the hospital now <span className="block text-xs text-slate-500">Active hospitals can receive revenue reports and charges.</span></span>
                   </label>
                   <label className={cx('flex items-start gap-2', !options.activate && 'opacity-50')}>
                     <input type="checkbox" className="mt-1" disabled={!options.activate} checked={options.activate && options.importNow} onChange={(event) => setOptions({ ...options, importNow: event.target.checked })} />
@@ -473,9 +473,9 @@ export function CentreSetupWizardPage() {
                   </label>
                 </div>
               )}
-              {!terms.enabled && <Notice tone="info">Without service-charge terms the centre is created in draft. Add its agreement on the centre page, then activate it.</Notice>}
+              {!terms.enabled && <Notice tone="info">Without service-charge terms the hospital is created in draft. Add its agreement on the hospital page, then activate it.</Notice>}
               <ErrorNotice error={commit.error} />
-              <Button loading={commit.isPending} onClick={() => commit.mutate()}>Create the centre</Button>
+              <Button loading={commit.isPending} onClick={() => commit.mutate()}>Create the hospital</Button>
               <p className="text-xs text-slate-500">Everything is created together or not at all, and the set-up is recorded in the audit trail.</p>
             </div>
           )}

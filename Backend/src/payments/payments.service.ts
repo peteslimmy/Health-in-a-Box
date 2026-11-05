@@ -14,7 +14,7 @@ import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone, dateOnly, parseDate } from '../common/utils/dates';
 import { moneyString, parseMoney } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AllocatePaymentDto,
@@ -43,17 +43,17 @@ export class PaymentsService {
   private scope(user: AuthUser): Prisma.PaymentWhereInput {
     return {
       organizationId: user.organizationId,
-      ...(user.allCentres ? {} : { centreId: { in: user.centreIds } }),
+      ...(user.allHospitals ? {} : { hospitalId: { in: user.hospitalIds } }),
     };
   }
 
   private async page(user: AuthUser, query: PaymentQueryDto, extra: Prisma.PaymentWhereInput = {}) {
     const { page, pageSize, skip, take } = pagination(query);
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const where: Prisma.PaymentWhereInput = {
       ...this.scope(user),
       ...extra,
-      ...(query.centreId ? { centreId: query.centreId } : {}),
+      ...(query.hospitalId ? { hospitalId: query.hospitalId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.from || query.to
         ? {
@@ -79,7 +79,7 @@ export class PaymentsService {
         skip,
         take,
         include: {
-          centre: { select: { id: true, code: true, name: true } },
+          hospital: { select: { id: true, code: true, name: true } },
           createdBy: { select: { id: true, fullName: true } },
         },
       }),
@@ -106,7 +106,7 @@ export class PaymentsService {
       where: { id, ...this.scope(user) },
       omit: { evidenceKey: true }, // internal storage key
       include: {
-        centre: { select: { id: true, code: true, name: true, status: true, timezone: true } },
+        hospital: { select: { id: true, code: true, name: true, status: true, timezone: true } },
         createdBy: { select: { id: true, fullName: true } },
         allocations: {
           orderBy: { allocatedAt: 'asc' },
@@ -117,19 +117,19 @@ export class PaymentsService {
       },
     });
     if (!payment) throw new NotFoundException('Payment not found');
-    assertCentreAccess(user, payment.centreId);
+    assertHospitalAccess(user, payment.hospitalId);
     return payment;
   }
 
   // ---------------------------------------------------------- draft stage
 
   async create(user: AuthUser, dto: CreatePaymentDto) {
-    const centre = await this.activeCentre(user, dto.centreId);
+    const hospital = await this.activeHospital(user, dto.hospitalId);
     const amount = this.positiveAmount(dto.amount);
-    const receiptDate = this.pastOrToday(dto.receiptDate, centre.timezone);
+    const receiptDate = this.pastOrToday(dto.receiptDate, hospital.timezone);
     const reference = dto.reference?.trim() || null;
     await this.assertNotDuplicate(this.prisma, {
-      centreId: centre.id,
+      hospitalId: hospital.id,
       reference,
       receiptDate,
       amount,
@@ -141,7 +141,7 @@ export class PaymentsService {
         const created = await tx.payment.create({
           data: {
             organizationId: user.organizationId,
-            centreId: centre.id,
+            hospitalId: hospital.id,
             receiptDate,
             amount,
             unallocatedAmount: amount,
@@ -157,7 +157,7 @@ export class PaymentsService {
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: centre.id,
+            hospitalId: hospital.id,
             action: 'PAYMENT_CREATED',
             targetType: 'Payment',
             targetId: created.id,
@@ -195,12 +195,12 @@ export class PaymentsService {
     const amount =
       dto.amount !== undefined ? this.positiveAmount(dto.amount) : dec(existing.amount);
     const receiptDate = dto.receiptDate
-      ? this.pastOrToday(dto.receiptDate, existing.centre.timezone)
+      ? this.pastOrToday(dto.receiptDate, existing.hospital.timezone)
       : existing.receiptDate;
     const reference =
       dto.reference !== undefined ? dto.reference.trim() || null : existing.reference;
     await this.assertNotDuplicate(this.prisma, {
-      centreId: existing.centreId,
+      hospitalId: existing.hospitalId,
       reference,
       receiptDate,
       amount,
@@ -234,7 +234,7 @@ export class PaymentsService {
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: existing.centreId,
+            hospitalId: existing.hospitalId,
             action: 'PAYMENT_UPDATED',
             targetType: 'Payment',
             targetId: id,
@@ -308,7 +308,7 @@ export class PaymentsService {
       to: PaymentStatus.POSTED,
       action: 'PAYMENT_POSTED',
       summary: 'Posted receipt as received funds',
-      requireActiveCentre: true,
+      requireActiveHospital: true,
       check: (payment) => this.assertNotMaker(user, payment.createdById, 'post'),
       data: { postedById: user.id, postedAt: new Date() },
     });
@@ -349,7 +349,7 @@ export class PaymentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: payment.centreId,
+          hospitalId: payment.hospitalId,
           action: 'PAYMENT_REVERSED',
           targetType: 'Payment',
           targetId: id,
@@ -377,7 +377,7 @@ export class PaymentsService {
     const receivables = await this.prisma.receivable.findMany({
       where: {
         organizationId: user.organizationId,
-        centreId: payment.centreId,
+        hospitalId: payment.hospitalId,
         balance: { gt: 0 },
       },
       orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
@@ -478,7 +478,7 @@ export class PaymentsService {
           message: 'Only posted receipts can be allocated',
         });
       }
-      this.assertCentreActive(existing.centre.status);
+      this.assertHospitalActive(existing.hospital.status);
 
       await tx.$queryRaw`SELECT id FROM "Receivable" WHERE id = ANY(${receivableIds}::uuid[]) ORDER BY id FOR UPDATE`;
       const receivables = await tx.receivable.findMany({
@@ -488,11 +488,11 @@ export class PaymentsService {
       const problems: Array<{ field: string; code: string; message: string }> = [];
       for (const item of requested) {
         const receivable = byId.get(item.receivableId);
-        if (!receivable || receivable.centreId !== payment.centreId) {
+        if (!receivable || receivable.hospitalId !== payment.hospitalId) {
           problems.push({
             field: 'receivableId',
             code: 'RECEIVABLE_NOT_FOUND',
-            message: `Receivable ${item.receivableId} was not found for this centre`,
+            message: `Receivable ${item.receivableId} was not found for this hospital`,
           });
         } else if (item.amount.gt(dec(receivable.balance))) {
           problems.push({
@@ -538,7 +538,7 @@ export class PaymentsService {
         await tx.ledgerEntry.create({
           data: {
             organizationId: user.organizationId,
-            centreId: payment.centreId,
+            hospitalId: payment.hospitalId,
             receivableId: receivable.id,
             type: 'PAYMENT_ALLOCATION',
             debit: 0,
@@ -580,7 +580,7 @@ export class PaymentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: payment.centreId,
+          hospitalId: payment.hospitalId,
           action: 'PAYMENT_ALLOCATED',
           targetType: 'Payment',
           targetId: id,
@@ -625,7 +625,7 @@ export class PaymentsService {
       include: { payment: true },
     });
     if (!found) throw new NotFoundException('Allocation not found');
-    assertCentreAccess(user, found.payment.centreId);
+    assertHospitalAccess(user, found.payment.hospitalId);
     if (found.allocatedById && found.allocatedById === user.id) {
       throw new ForbiddenException({
         code: 'MAKER_CHECKER_VIOLATION',
@@ -662,7 +662,7 @@ export class PaymentsService {
       await tx.ledgerEntry.create({
         data: {
           organizationId: user.organizationId,
-          centreId: payment.centreId,
+          hospitalId: payment.hospitalId,
           receivableId: receivable.id,
           type: 'REVERSAL',
           debit: amount,
@@ -698,7 +698,7 @@ export class PaymentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: payment.centreId,
+          hospitalId: payment.hospitalId,
           action: 'PAYMENT_ALLOCATION_REVERSED',
           targetType: 'PaymentAllocation',
           targetId: allocation.id,
@@ -728,7 +728,7 @@ export class PaymentsService {
       action: string;
       summary: string;
       reason?: string;
-      requireActiveCentre?: boolean;
+      requireActiveHospital?: boolean;
       check?: (payment: Awaited<ReturnType<PaymentsService['get']>>) => void;
       data: Prisma.PaymentUncheckedUpdateManyInput;
     },
@@ -741,7 +741,7 @@ export class PaymentsService {
       });
     }
     options.check?.(existing);
-    if (options.requireActiveCentre) this.assertCentreActive(existing.centre.status);
+    if (options.requireActiveHospital) this.assertHospitalActive(existing.hospital.status);
 
     await this.prisma.$transaction(async (tx) => {
       const result = await tx.payment.updateMany({
@@ -758,7 +758,7 @@ export class PaymentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: existing.centreId,
+          hospitalId: existing.hospitalId,
           action: options.action,
           targetType: 'Payment',
           targetId: id,
@@ -781,24 +781,24 @@ export class PaymentsService {
     }
   }
 
-  private assertCentreActive(status: string) {
+  private assertHospitalActive(status: string) {
     if (status !== 'ACTIVE') {
       throw new ConflictException({
-        code: 'CENTRE_NOT_ACTIVE',
-        message: `The centre is ${status.toLowerCase()}; receipts can only be handled for active centres`,
+        code: 'HOSPITAL_NOT_ACTIVE',
+        message: `The hospital is ${status.toLowerCase()}; receipts can only be handled for active hospitals`,
       });
     }
   }
 
-  private async activeCentre(user: AuthUser, centreId: string) {
-    const centre = await this.prisma.centre.findFirst({
-      where: { id: centreId, organizationId: user.organizationId },
+  private async activeHospital(user: AuthUser, hospitalId: string) {
+    const hospital = await this.prisma.hospital.findFirst({
+      where: { id: hospitalId, organizationId: user.organizationId },
       select: { id: true, status: true, timezone: true },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    assertCentreAccess(user, centre.id);
-    this.assertCentreActive(centre.status);
-    return centre;
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    assertHospitalAccess(user, hospital.id);
+    this.assertHospitalActive(hospital.status);
+    return hospital;
   }
 
   private positiveAmount(value: string, field = 'amount'): Decimal {
@@ -827,11 +827,11 @@ export class PaymentsService {
     await tx.$queryRaw`SELECT id FROM "Payment" WHERE id = ${id}::uuid FOR UPDATE`;
   }
 
-  /** FR-AR-004: a repeated reference is blocked; same centre/date/amount needs confirmation. */
+  /** FR-AR-004: a repeated reference is blocked; same hospital/date/amount needs confirmation. */
   private async assertNotDuplicate(
     client: Client,
     input: {
-      centreId: string;
+      hospitalId: string;
       reference: string | null;
       receiptDate: Date;
       amount: Decimal;
@@ -843,7 +843,7 @@ export class PaymentsService {
     if (input.reference) {
       const sameReference = await client.payment.findFirst({
         where: {
-          centreId: input.centreId,
+          hospitalId: input.hospitalId,
           reference: { equals: input.reference, mode: 'insensitive' },
           status: { notIn: DEAD_STATUSES },
           ...exclude,
@@ -853,7 +853,7 @@ export class PaymentsService {
       if (sameReference) {
         throw new ConflictException({
           code: 'DUPLICATE_PAYMENT_REFERENCE',
-          message: 'A receipt with this reference already exists for the centre',
+          message: 'A receipt with this reference already exists for the hospital',
           details: [{ id: sameReference.id, status: sameReference.status }],
         });
       }
@@ -861,7 +861,7 @@ export class PaymentsService {
     if (!input.confirmed) {
       const similar = await client.payment.findFirst({
         where: {
-          centreId: input.centreId,
+          hospitalId: input.hospitalId,
           receiptDate: input.receiptDate,
           amount: input.amount,
           status: { notIn: DEAD_STATUSES },
@@ -873,7 +873,7 @@ export class PaymentsService {
         throw new ConflictException({
           code: 'POSSIBLE_DUPLICATE_PAYMENT',
           message:
-            'A receipt for the same centre, date and amount already exists. Review it, then resubmit with confirmPossibleDuplicate=true if this is a different payment.',
+            'A receipt for the same hospital, date and amount already exists. Review it, then resubmit with confirmPossibleDuplicate=true if this is a different payment.',
           details: [{ id: similar.id, status: similar.status, reference: similar.reference }],
         });
       }
@@ -884,7 +884,7 @@ export class PaymentsService {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return new ConflictException({
         code: 'DUPLICATE_PAYMENT_REFERENCE',
-        message: 'A receipt with this reference already exists for the centre',
+        message: 'A receipt with this reference already exists for the hospital',
       });
     }
     return error;

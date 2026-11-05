@@ -83,7 +83,7 @@ describe('printed totals must tally (PDF and spreadsheet reports)', () => {
     expect(result.unmatched.departments).toEqual(['Brand New Unit']);
   });
 
-  it('lists payment-channel columns that the centre does not have', () => {
+  it('lists payment-channel columns that the hospital does not have', () => {
     const result = parser.parseRows(
       [
         ['Department', 'Cash', 'Mobile Money', 'Total Amount'],

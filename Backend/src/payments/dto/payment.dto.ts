@@ -42,7 +42,7 @@ export class PaymentQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ enum: PaymentStatus })
   @IsOptional()
@@ -69,7 +69,7 @@ export class PaymentQueryDto {
 export class CreatePaymentDto {
   @ApiProperty()
   @IsUUID()
-  centreId!: string;
+  hospitalId!: string;
 
   @ApiProperty({ example: '2026-10-26' })
   @IsDateString()
@@ -105,7 +105,7 @@ export class CreatePaymentDto {
 
   @ApiPropertyOptional({
     description:
-      'Set true after reviewing a POSSIBLE_DUPLICATE_PAYMENT warning (same centre, date and amount)',
+      'Set true after reviewing a POSSIBLE_DUPLICATE_PAYMENT warning (same hospital, date and amount)',
   })
   @IsOptional()
   @IsBoolean()
@@ -182,7 +182,7 @@ export class AllocatePaymentDto {
   @Type(() => AllocationItemDto)
   allocations!: AllocationItemDto[];
 
-  @ApiPropertyOptional({ example: 'Centre remittance advice specifies two periods' })
+  @ApiPropertyOptional({ example: 'Hospital remittance advice specifies two periods' })
   @IsOptional()
   @IsString()
   @MaxLength(500)

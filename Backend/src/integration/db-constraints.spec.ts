@@ -20,7 +20,7 @@ maybe('database integrity constraints', () => {
   const suffix = randomUUID().slice(0, 8);
   let orgId: string;
   let userId: string;
-  let centreId: string;
+  let hospitalId: string;
   let deptId: string;
 
   beforeAll(async () => {
@@ -38,12 +38,12 @@ maybe('database integrity constraints', () => {
       },
     });
     userId = user.id;
-    const centre = await prisma.centre.create({
-      data: { organizationId: orgId, code: `C-${suffix}`, name: 'Test Centre' },
+    const hospital = await prisma.hospital.create({
+      data: { organizationId: orgId, code: `C-${suffix}`, name: 'Test Hospital' },
     });
-    centreId = centre.id;
+    hospitalId = hospital.id;
     const dept = await prisma.department.create({
-      data: { centreId, code: 'D1', name: 'Dept 1' },
+      data: { hospitalId, code: 'D1', name: 'Dept 1' },
     });
     deptId = dept.id;
   });
@@ -55,7 +55,7 @@ maybe('database integrity constraints', () => {
   const rule = (from: string, to: string | null, extra: Record<string, unknown> = {}) =>
     prisma.chargeRule.create({
       data: {
-        centreId,
+        hospitalId,
         departmentId: deptId,
         name: `rule ${from}`,
         rate: 5,
@@ -88,7 +88,7 @@ maybe('database integrity constraints', () => {
       prisma.receivable.create({
         data: {
           organizationId: orgId,
-          centreId,
+          hospitalId,
           reference: `RCV-${randomUUID()}`,
           description: 'test',
           originalAmount: 100,
@@ -110,7 +110,7 @@ maybe('database integrity constraints', () => {
         prisma.ledgerEntry.create({
           data: {
             organizationId: orgId,
-            centreId,
+            hospitalId,
             receivableId: r.id,
             type: 'CHARGE',
             debit,
@@ -130,7 +130,7 @@ maybe('database integrity constraints', () => {
       const entry = await prisma.ledgerEntry.create({
         data: {
           organizationId: orgId,
-          centreId,
+          hospitalId,
           receivableId: r.id,
           type: 'CHARGE',
           debit: 100,
@@ -157,8 +157,8 @@ maybe('database integrity constraints', () => {
       );
     });
 
-    it('cannot delete a centre or organisation that has financial records', async () => {
-      await expect(prisma.centre.delete({ where: { id: centreId } })).rejects.toThrow();
+    it('cannot delete a hospital or organisation that has financial records', async () => {
+      await expect(prisma.hospital.delete({ where: { id: hospitalId } })).rejects.toThrow();
       await expect(prisma.organization.delete({ where: { id: orgId } })).rejects.toThrow();
     });
   });
@@ -168,7 +168,7 @@ maybe('database integrity constraints', () => {
       prisma.importBatch.create({
         data: {
           organizationId: orgId,
-          centreId,
+          hospitalId,
           status,
           periodStart: new Date('2030-03-01T00:00:00Z'),
           periodEnd: new Date('2030-03-31T00:00:00Z'),
@@ -177,7 +177,7 @@ maybe('database integrity constraints', () => {
         },
       });
 
-    it('allows only one ready/committed batch per centre, period and content', async () => {
+    it('allows only one ready/committed batch per hospital, period and content', async () => {
       const fp = `fp-${suffix}`;
       await batch('READY_TO_COMMIT', fp);
       await expect(batch('READY_TO_COMMIT', fp)).rejects.toThrow();

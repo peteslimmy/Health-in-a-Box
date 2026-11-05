@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../auth/AuthContext';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { Button, Card, ErrorNotice, Field, Input, Notice, PageHeader } from '../components/ui';
 import { api } from '../lib/api';
 import { can } from '../lib/permissions';
@@ -14,7 +14,7 @@ export function ImportNewPage() {
   const navigate = useNavigate();
   const user = useUser();
   const queryClient = useQueryClient();
-  const [centreId, setCentreId] = useState('');
+  const [hospitalId, setHospitalId] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -27,7 +27,7 @@ export function ImportNewPage() {
   const upload = useMutation({
     mutationFn: () => {
       const form = new FormData();
-      form.set('centreId', centreId);
+      form.set('hospitalId', hospitalId);
       if (periodStart) form.set('periodStart', periodStart);
       if (periodEnd) form.set('periodEnd', periodEnd);
       if (createMissing) form.set('createMissing', 'true');
@@ -36,14 +36,14 @@ export function ImportNewPage() {
     },
     onSuccess: (batch) => {
       void queryClient.invalidateQueries({ queryKey: ['imports'] });
-      void queryClient.invalidateQueries({ queryKey: ['centre'] });
+      void queryClient.invalidateQueries({ queryKey: ['hospital'] });
       navigate(`/imports/${batch.id}`);
     },
   });
 
   const template = useMutation({
     mutationFn: async () => {
-      const blob = await api<Blob>('/imports/template', { query: { centreId }, blob: true });
+      const blob = await api<Blob>('/imports/template', { query: { hospitalId }, blob: true });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -83,7 +83,7 @@ export function ImportNewPage() {
       <Card>
         <form onSubmit={submit} className="grid max-w-3xl gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Field label="Centre">{(id) => <CentreSelect id={id} required value={centreId} onChange={setCentreId} />}</Field>
+            <Field label="Hospital">{(id) => <HospitalSelect id={id} required value={hospitalId} onChange={setHospitalId} />}</Field>
           </div>
           <div className="sm:col-span-2">
             <Field label="Report file (.pdf, .csv or .xlsx, up to 15 MB)" error={fileError}>
@@ -114,12 +114,12 @@ export function ImportNewPage() {
               />
             )}
           </Field>
-          {can(user, 'centres.update') && (
+          {can(user, 'hospitals.update') && (
             <label className="flex items-start gap-2 text-sm text-slate-700 sm:col-span-2">
               <input type="checkbox" className="mt-1" checked={createMissing} onChange={(event) => setCreateMissing(event.target.checked)} />
               <span>
-                Add departments and payment channels found in this file that the centre does not have yet.
-                <span className="block text-xs text-slate-500">Use for a centre's first upload. Review the list afterwards; each addition is audited.</span>
+                Add departments and payment channels found in this file that the hospital does not have yet.
+                <span className="block text-xs text-slate-500">Use for a hospital's first upload. Review the list afterwards; each addition is audited.</span>
               </span>
             </label>
           )}
@@ -129,17 +129,17 @@ export function ImportNewPage() {
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 <li>Titles, signatures and page furniture are set aside; only the revenue table is read.</li>
                 <li>Every department total, channel total and the grand total are re-added and must tally.</li>
-                <li>Row numbers must run without gaps, and each department must be known to the centre.</li>
+                <li>Row numbers must run without gaps, and each department must be known to the hospital.</li>
                 <li>Days already uploaded are never overwritten: if earlier reports sit inside this file's period, only the new days are taken; otherwise it is blocked. Skipped days are flagged and need a reason.</li>
               </ul>
               <p className="mt-1">Uploading posts nothing. You will see every result first.</p>
             </Notice>
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" loading={upload.isPending} disabled={!centreId || !file}>
+              <Button type="submit" loading={upload.isPending} disabled={!hospitalId || !file}>
                 Upload and validate
               </Button>
-              <Button variant="secondary" loading={template.isPending} disabled={!centreId} onClick={() => template.mutate()}>
-                Download CSV template for this centre
+              <Button variant="secondary" loading={template.isPending} disabled={!hospitalId} onClick={() => template.mutate()}>
+                Download CSV template for this hospital
               </Button>
             </div>
           </div>

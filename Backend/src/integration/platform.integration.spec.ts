@@ -13,7 +13,7 @@ import { AccessPolicyService } from '../access/access-policy.service';
 import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
 import { PlatformService } from '../platform/platform.service';
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 
 const url = process.env.TEST_DATABASE_URL;
 const safe = !!url && /\/[^/?]*(test|scratch)[^/?]*(\?|$)/i.test(url);
@@ -47,7 +47,7 @@ maybe('platform settings and email access against a real database', () => {
         fullName: 'Owner',
       },
     });
-    owner = { ...allCentresUser(person.id, ['platform.manage']), organizationId: org.id };
+    owner = { ...allHospitalsUser(person.id, ['platform.manage']), organizationId: org.id };
     access = new AccessPolicyService(prisma as never);
     const config = {
       get: (key: string) => (key === 'MFA_ENCRYPTION_KEY' ? 'integration-key' : undefined),

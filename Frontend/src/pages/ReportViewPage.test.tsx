@@ -21,7 +21,7 @@ const summary = (overrides: Partial<ReportSummary> = {}): ReportSummary => ({
   description: 'Receipts',
   category: 'Payments',
   dateBasis: 'Receipt date',
-  filters: ['centreId', 'from', 'to', 'status'],
+  filters: ['hospitalId', 'from', 'to', 'status'],
   statuses: ['POSTED', 'ALL'],
   canExport: true,
   ...overrides,
@@ -64,7 +64,7 @@ describe('report viewer', () => {
   });
 
   it('hides export buttons when the report cannot be exported by this user', async () => {
-    open(summary({ canExport: false, filters: ['centreId'] }));
+    open(summary({ canExport: false, filters: ['hospitalId'] }));
     await screen.findByText('R1');
     expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
     expect(screen.queryByLabelText('Status')).toBeNull();

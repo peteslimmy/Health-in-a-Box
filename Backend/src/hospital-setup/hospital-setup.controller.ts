@@ -14,21 +14,21 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nes
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { AuthUser } from '../common/types/auth-user';
-import { CentreSetupService } from './centre-setup.service';
-import { CommitSetupDto } from './dto/centre-setup.dto';
+import { HospitalSetupService } from './hospital-setup.service';
+import { CommitSetupDto } from './dto/hospital-setup.dto';
 
-/** The set-up wizard. Every route needs `centres.onboard`, which only the SUPER_ADMIN role holds. */
-@ApiTags('centre-setup')
+/** The set-up wizard. Every route needs `hospitals.onboard`, which only the SUPER_ADMIN role holds. */
+@ApiTags('hospital-setup')
 @ApiBearerAuth()
-@Permissions('centres.onboard')
-@Controller('centre-setup')
-export class CentreSetupController {
-  constructor(private readonly setup: CentreSetupService) {}
+@Permissions('hospitals.onboard')
+@Controller('hospital-setup')
+export class HospitalSetupController {
+  constructor(private readonly setup: HospitalSetupService) {}
 
   @Post('analyse')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Read a report file and propose a centre, departments and payment channels',
+    summary: 'Read a report file and propose a hospital, departments and payment channels',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -57,7 +57,7 @@ export class CentreSetupController {
 
   @Post(':id/commit')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Create the centre, its departments, payment channels and terms' })
+  @ApiOperation({ summary: 'Create the hospital, its departments, payment channels and terms' })
   commit(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

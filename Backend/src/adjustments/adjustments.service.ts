@@ -11,7 +11,7 @@ import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
 import { moneyString } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess, centreWhere } from '../common/utils/scope';
+import { assertHospitalAccess, hospitalWhere } from '../common/utils/scope';
 import { receivableStatusFor } from '../payments/receivable-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { applyAdjustment, totalDue } from './adjustment-math';
@@ -26,7 +26,7 @@ import {
 const dec = (value: { toString(): string }) => new Decimal(value.toString());
 
 const WHO = { select: { id: true, fullName: true } } as const;
-const CENTRE = { select: { id: true, code: true, name: true } } as const;
+const HOSPITAL = { select: { id: true, code: true, name: true } } as const;
 
 const STATUSES = ['PENDING', 'APPROVED', 'REJECTED'];
 const DISPUTE_STATUSES = ['OPEN', 'UPHELD', 'REJECTED', 'WITHDRAWN'];
@@ -42,13 +42,13 @@ export class AdjustmentsService {
     return tx.$queryRaw`SELECT id FROM "Receivable" WHERE id = ${receivableId}::uuid FOR UPDATE`;
   }
 
-  /** The receivable, only if it is in the caller's organisation and centre scope (404 otherwise). */
+  /** The receivable, only if it is in the caller's organisation and hospital scope (404 otherwise). */
   private async receivableFor(user: AuthUser, receivableId: string) {
     const receivable = await this.prisma.receivable.findFirst({
       where: { id: receivableId, organizationId: user.organizationId },
     });
     if (!receivable) throw new NotFoundException('Receivable not found');
-    assertCentreAccess(user, receivable.centreId);
+    assertHospitalAccess(user, receivable.hospitalId);
     return receivable;
   }
 
@@ -72,7 +72,7 @@ export class AdjustmentsService {
     const { page, pageSize, skip, take } = pagination(query);
     const where: Prisma.AdjustmentWhereInput = {
       organizationId: user.organizationId,
-      ...centreWhere(user, query.centreId),
+      ...hospitalWhere(user, query.hospitalId),
       ...(query.status ? { status: query.status as never } : {}),
       ...(query.type ? { type: query.type } : {}),
       ...(query.receivableId ? { receivableId: query.receivableId } : {}),
@@ -84,7 +84,7 @@ export class AdjustmentsService {
         skip,
         take,
         include: {
-          centre: CENTRE,
+          hospital: HOSPITAL,
           receivable: { select: { id: true, reference: true, balance: true } },
           createdBy: WHO,
           decidedBy: WHO,
@@ -116,7 +116,7 @@ export class AdjustmentsService {
       const created = await tx.adjustment.create({
         data: {
           organizationId: user.organizationId,
-          centreId: receivable.centreId,
+          hospitalId: receivable.hospitalId,
           receivableId: receivable.id,
           type: dto.type,
           amount: dto.amount,
@@ -129,7 +129,7 @@ export class AdjustmentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: receivable.centreId,
+          hospitalId: receivable.hospitalId,
           action: 'ADJUSTMENT_PROPOSED',
           targetType: 'Adjustment',
           targetId: created.id,
@@ -148,7 +148,7 @@ export class AdjustmentsService {
       where: { id, organizationId: user.organizationId },
     });
     if (!found) throw new NotFoundException('Adjustment not found');
-    assertCentreAccess(user, found.centreId);
+    assertHospitalAccess(user, found.hospitalId);
     if (found.createdById === user.id) {
       throw new ForbiddenException({
         code: 'MAKER_CHECKER_VIOLATION',
@@ -200,7 +200,7 @@ export class AdjustmentsService {
       await tx.ledgerEntry.create({
         data: {
           organizationId: user.organizationId,
-          centreId: receivable.centreId,
+          hospitalId: receivable.hospitalId,
           receivableId: receivable.id,
           type: found.type === 'CREDIT' ? 'ADJUSTMENT_CREDIT' : 'ADJUSTMENT_DEBIT',
           debit: found.type === 'DEBIT' ? found.amount : 0,
@@ -220,7 +220,7 @@ export class AdjustmentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: receivable.centreId,
+          hospitalId: receivable.hospitalId,
           action: 'ADJUSTMENT_APPROVED',
           targetType: 'Adjustment',
           targetId: found.id,
@@ -243,7 +243,7 @@ export class AdjustmentsService {
       where: { id, organizationId: user.organizationId },
     });
     if (!found) throw new NotFoundException('Adjustment not found');
-    assertCentreAccess(user, found.centreId);
+    assertHospitalAccess(user, found.hospitalId);
     if (found.createdById === user.id) {
       throw new ForbiddenException({
         code: 'MAKER_CHECKER_VIOLATION',
@@ -276,7 +276,7 @@ export class AdjustmentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: found.centreId,
+          hospitalId: found.hospitalId,
           action: 'ADJUSTMENT_REJECTED',
           targetType: 'Adjustment',
           targetId: id,
@@ -295,7 +295,7 @@ export class AdjustmentsService {
     const { page, pageSize, skip, take } = pagination(query);
     const where: Prisma.DisputeWhereInput = {
       organizationId: user.organizationId,
-      ...centreWhere(user, query.centreId),
+      ...hospitalWhere(user, query.hospitalId),
       ...(query.status ? { status: query.status as never } : {}),
       ...(query.receivableId ? { receivableId: query.receivableId } : {}),
     };
@@ -306,7 +306,7 @@ export class AdjustmentsService {
         skip,
         take,
         include: {
-          centre: CENTRE,
+          hospital: HOSPITAL,
           receivable: { select: { id: true, reference: true, balance: true } },
           raisedBy: WHO,
           resolvedBy: WHO,
@@ -346,7 +346,7 @@ export class AdjustmentsService {
         const dispute = await tx.dispute.create({
           data: {
             organizationId: user.organizationId,
-            centreId: current.centreId,
+            hospitalId: current.hospitalId,
             receivableId: current.id,
             amount: dto.amount,
             reason: dto.reason.trim(),
@@ -358,7 +358,7 @@ export class AdjustmentsService {
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: current.centreId,
+            hospitalId: current.hospitalId,
             action: 'DISPUTE_RAISED',
             targetType: 'Dispute',
             targetId: dispute.id,
@@ -386,7 +386,7 @@ export class AdjustmentsService {
       where: { id, organizationId: user.organizationId },
     });
     if (!found) throw new NotFoundException('Dispute not found');
-    assertCentreAccess(user, found.centreId);
+    assertHospitalAccess(user, found.hospitalId);
     return this.prisma.$transaction(async (tx) => {
       await this.lock(tx, found.receivableId);
       const claimed = await tx.dispute.updateMany({
@@ -410,7 +410,7 @@ export class AdjustmentsService {
         const adjustment = await tx.adjustment.create({
           data: {
             organizationId: user.organizationId,
-            centreId: found.centreId,
+            hospitalId: found.hospitalId,
             receivableId: found.receivableId,
             type: 'CREDIT',
             amount: found.amount,
@@ -436,7 +436,7 @@ export class AdjustmentsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: found.centreId,
+          hospitalId: found.hospitalId,
           action: 'DISPUTE_RESOLVED',
           targetType: 'Dispute',
           targetId: id,

@@ -5,8 +5,8 @@ export function grant(roleCode: string, permissions: string[], scope: 'ALL' | st
   return {
     roleCode,
     permissions,
-    allCentres: scope === 'ALL',
-    centreIds: scope === 'ALL' ? [] : scope,
+    allHospitals: scope === 'ALL',
+    hospitalIds: scope === 'ALL' ? [] : scope,
   };
 }
 
@@ -18,14 +18,18 @@ export function makeUser(id: string, grants: Grant[]): AuthUser {
     fullName: id,
     roleCodes: grants.map((g) => g.roleCode),
     permissions: [...new Set(grants.flatMap((g) => g.permissions))],
-    allCentres: grants.some((g) => g.allCentres),
-    centreIds: [...new Set(grants.flatMap((g) => g.centreIds))],
+    allHospitals: grants.some((g) => g.allHospitals),
+    hospitalIds: [...new Set(grants.flatMap((g) => g.hospitalIds))],
     grants,
   };
 }
 
-export function allCentresUser(id: string, permissions: string[] = []): AuthUser {
+export function allHospitalsUser(id: string, permissions: string[] = []): AuthUser {
   return makeUser(id, [grant('TEST', permissions, 'ALL')]);
+}
+
+export function superAdminUser(id: string, permissions: string[] = []): AuthUser {
+  return makeUser(id, [grant('SUPER_ADMIN', permissions, 'ALL')]);
 }
 
 export const D = (iso: string) => new Date(`${iso}T00:00:00.000Z`);

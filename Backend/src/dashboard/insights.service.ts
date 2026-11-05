@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone, parseDate } from '../common/utils/dates';
-import { assertCentreAccess, centreWhere } from '../common/utils/scope';
+import { assertHospitalAccess, hospitalWhere } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { LATE_AFTER_DAYS } from './collection-rate';
-import { CentreMonth, THRESHOLDS, deriveInsights } from './insight-rules';
+import { HospitalMonth, THRESHOLDS, deriveInsights } from './insight-rules';
 import { loadReportingStatus } from './reporting-status';
 import { lastMonths } from './trend-series';
 
@@ -18,10 +18,10 @@ const monthOf = (date: Date) => date.toISOString().slice(0, 7);
 export class InsightsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async insights(user: AuthUser, query: { centreId?: string }) {
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+  async insights(user: AuthUser, query: { hospitalId?: string }) {
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const org = user.organizationId;
-    const scope = centreWhere(user, query.centreId);
+    const scope = hospitalWhere(user, query.hospitalId);
     const today = dateInTimeZone(new Date(), TIME_ZONE);
     const todayDate = parseDate(today, 'today');
     const [previous, latest] = lastMonths(today, 3).slice(0, 2) as [string, string];
@@ -32,7 +32,7 @@ export class InsightsService {
     const disputeCut = new Date(todayDate.getTime() - THRESHOLDS.disputeAgeDays * 86_400_000);
 
     const [
-      centres,
+      hospitals,
       reports,
       runs,
       outstanding,
@@ -43,36 +43,36 @@ export class InsightsService {
       troubles,
       disputes,
     ] = await Promise.all([
-      this.prisma.centre.findMany({
-        where: { organizationId: org, ...(scope.centreId ? { id: scope.centreId } : {}) },
+      this.prisma.hospital.findMany({
+        where: { organizationId: org, ...(scope.hospitalId ? { id: scope.hospitalId } : {}) },
         select: { id: true, code: true, name: true },
       }),
       this.prisma.revenueReport.findMany({
         where: { organizationId: org, ...scope, status: 'COMMITTED', periodEnd: { gte: since } },
-        select: { centreId: true, periodEnd: true, grandTotal: true },
+        select: { hospitalId: true, periodEnd: true, grandTotal: true },
         take: 5000,
       }),
       this.prisma.chargeRun.findMany({
         where: { organizationId: org, ...scope, status: 'POSTED', periodEnd: { gte: since } },
-        select: { centreId: true, periodEnd: true, baseTotal: true, chargeTotal: true },
+        select: { hospitalId: true, periodEnd: true, baseTotal: true, chargeTotal: true },
         take: 5000,
       }),
       this.prisma.receivable.groupBy({
-        by: ['centreId'],
+        by: ['hospitalId'],
         where: { organizationId: org, ...scope, balance: { gt: 0 } },
         _sum: { balance: true },
       }),
       this.prisma.receivable.groupBy({
-        by: ['centreId'],
+        by: ['hospitalId'],
         where: { organizationId: org, ...scope, balance: { gt: 0 }, dueDate: { lt: todayDate } },
         _sum: { balance: true },
       }),
       this.prisma.revenueReport.groupBy({
-        by: ['centreId'],
+        by: ['hospitalId'],
         where: { organizationId: org, ...scope, status: 'COMMITTED', periodEnd: { gte: yearAgo } },
         _sum: { grandTotal: true },
       }),
-      loadReportingStatus(this.prisma, user, today, query.centreId),
+      loadReportingStatus(this.prisma, user, today, query.hospitalId),
       this.prisma.payment.aggregate({
         where: {
           organizationId: org,
@@ -85,7 +85,7 @@ export class InsightsService {
         _count: true,
       }),
       this.prisma.importBatch.groupBy({
-        by: ['centreId'],
+        by: ['hospitalId'],
         where: {
           organizationId: org,
           ...scope,
@@ -101,17 +101,19 @@ export class InsightsService {
       }),
     ]);
 
-    const ref = new Map(centres.map((c) => [c.id, { centreId: c.id, code: c.code, name: c.name }]));
+    const ref = new Map(
+      hospitals.map((c) => [c.id, { hospitalId: c.id, code: c.code, name: c.name }]),
+    );
     const named = (id: string) =>
-      ref.get(id) ?? { centreId: id, code: '?', name: 'Unknown centre' };
+      ref.get(id) ?? { hospitalId: id, code: '?', name: 'Unknown hospital' };
 
-    const monthly = new Map<string, CentreMonth>();
-    const cell = (centreId: string, month: string) => {
-      const key = `${centreId}|${month}`;
+    const monthly = new Map<string, HospitalMonth>();
+    const cell = (hospitalId: string, month: string) => {
+      const key = `${hospitalId}|${month}`;
       const existing = monthly.get(key);
       if (existing) return existing;
-      const created: CentreMonth = {
-        ...named(centreId),
+      const created: HospitalMonth = {
+        ...named(hospitalId),
         month,
         revenue: new Decimal(0),
         base: new Decimal(0),
@@ -121,39 +123,44 @@ export class InsightsService {
       return created;
     };
     for (const r of reports)
-      cell(r.centreId, monthOf(r.periodEnd)).revenue = cell(
-        r.centreId,
+      cell(r.hospitalId, monthOf(r.periodEnd)).revenue = cell(
+        r.hospitalId,
         monthOf(r.periodEnd),
       ).revenue.plus(dec(r.grandTotal));
     for (const r of runs) {
-      const c = cell(r.centreId, monthOf(r.periodEnd));
+      const c = cell(r.hospitalId, monthOf(r.periodEnd));
       c.base = c.base.plus(dec(r.baseTotal));
       c.charge = c.charge.plus(dec(r.chargeTotal));
     }
-    const overdueBy = new Map(overdue.map((o) => [o.centreId, dec(o._sum.balance)]));
+    const overdueBy = new Map(overdue.map((o) => [o.hospitalId, dec(o._sum.balance)]));
 
     const items = deriveInsights({
       months: [previous, latest],
       monthly: [...monthly.values()],
       balances: outstanding.map((o) => ({
-        ...named(o.centreId),
+        ...named(o.hospitalId),
         outstanding: dec(o._sum.balance),
-        overdue: overdueBy.get(o.centreId) ?? new Decimal(0),
+        overdue: overdueBy.get(o.hospitalId) ?? new Decimal(0),
       })),
       revenueLast12Months: year.map((y) => ({
-        ...named(y.centreId),
+        ...named(y.hospitalId),
         revenue: dec(y._sum.grandTotal),
       })),
-      lateCentres: status
+      lateHospitals: status
         .filter((s) => s.late)
-        .map((s) => ({ centreId: s.centreId, code: s.code, name: s.name, daysSince: s.daysSince })),
+        .map((s) => ({
+          hospitalId: s.hospitalId,
+          code: s.code,
+          name: s.name,
+          daysSince: s.daysSince,
+        })),
       lateAfterDays: LATE_AFTER_DAYS,
       unallocated: {
         count: unallocated._count,
         total: dec(unallocated._sum.unallocatedAmount),
         olderThanDays: 7,
       },
-      importTroubles: troubles.map((t) => ({ ...named(t.centreId), count: t._count })),
+      importTroubles: troubles.map((t) => ({ ...named(t.hospitalId), count: t._count })),
       oldDisputes: { count: disputes._count, total: dec(disputes._sum.amount) },
     });
     return { asAt: today, comparedMonths: { previous, latest }, count: items.length, items };

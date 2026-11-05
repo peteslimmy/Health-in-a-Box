@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { ChargeConfigService } from '../charges/charge-config.service';
 import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 
 const url = process.env.TEST_DATABASE_URL;
 const safe = !!url && /\/[^/?]*(test|scratch)[^/?]*(\?|$)/i.test(url);
@@ -21,7 +21,7 @@ maybe('exempt charge rules against a real database', () => {
   let prisma: PrismaClient;
   let service: ChargeConfigService;
   let user: AuthUser;
-  let centreId: string;
+  let hospitalId: string;
   let departmentId: string;
   let agreementId: string;
   const suffix = randomUUID().slice(0, 8);
@@ -39,23 +39,23 @@ maybe('exempt charge rules against a real database', () => {
         fullName: 'U',
       },
     });
-    user = { ...allCentresUser(person.id), organizationId: org.id };
-    const centre = await prisma.centre.create({
+    user = { ...allHospitalsUser(person.id), organizationId: org.id };
+    const hospital = await prisma.hospital.create({
       data: {
         organizationId: org.id,
         code: `EX-${suffix}`,
-        name: 'Exempt Centre',
+        name: 'Exempt Hospital',
         status: 'ACTIVE',
       },
     });
-    centreId = centre.id;
+    hospitalId = hospital.id;
     const department = await prisma.department.create({
-      data: { centreId, code: 'OXY', name: 'Oxygen' },
+      data: { hospitalId, code: 'OXY', name: 'Oxygen' },
     });
     departmentId = department.id;
     const agreement = await prisma.commercialAgreement.create({
       data: {
-        centreId,
+        hospitalId,
         name: 'Main',
         effectiveFrom: new Date('2026-01-01T00:00:00Z'),
         status: 'ACTIVE',
@@ -108,7 +108,7 @@ maybe('exempt charge rules against a real database', () => {
     await expect(
       prisma.chargeRule.create({
         data: {
-          centreId,
+          hospitalId,
           agreementId,
           name: 'Bypass',
           rate: 4,

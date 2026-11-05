@@ -1,11 +1,11 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { safeInternalPath } from './safePath';
 
 describe('safeInternalPath (post-sign-in redirect)', () => {
   it('keeps ordinary in-app paths, including query strings', () => {
     expect(safeInternalPath('/payments')).toBe('/payments');
     expect(safeInternalPath('/receivables?openOnly=true&page=2')).toBe('/receivables?openOnly=true&page=2');
-    expect(safeInternalPath('/centres/6f0b3c2e-1111-2222-3333-444455556666')).toBe('/centres/6f0b3c2e-1111-2222-3333-444455556666');
+    expect(safeInternalPath('/hospitals/6f0b3c2e-1111-2222-3333-444455556666')).toBe('/hospitals/6f0b3c2e-1111-2222-3333-444455556666');
   });
 
   it.each([

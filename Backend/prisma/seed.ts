@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 const DEMO = 'DEMO FIXTURE — replace with real data';
 
-type CentreSeed = {
+type HospitalSeed = {
   code: string;
   name: string;
   city: string;
@@ -16,10 +16,10 @@ type CentreSeed = {
   paymentTermsDays: number;
 };
 
-const CENTRES: CentreSeed[] = [
+const HOSPITALS: HospitalSeed[] = [
   {
     code: 'HNB-LAG-001',
-    name: 'Lekki Phase 1 Centre',
+    name: 'Lekki Phase 1 Hospital',
     city: 'Lagos',
     paymentTermsDays: 30,
     departments: [
@@ -31,7 +31,7 @@ const CENTRES: CentreSeed[] = [
   },
   {
     code: 'HNB-ABJ-002',
-    name: 'Abuja Central Centre',
+    name: 'Abuja Central Hospital',
     city: 'Abuja',
     paymentTermsDays: 30,
     departments: [
@@ -43,7 +43,7 @@ const CENTRES: CentreSeed[] = [
   },
   {
     code: 'HNB-PHC-003',
-    name: 'Port Harcourt Centre',
+    name: 'Port Harcourt Hospital',
     city: 'Port Harcourt',
     paymentTermsDays: 45,
     departments: [
@@ -134,7 +134,7 @@ async function main() {
   }
 
   // Reference data (permissions and roles) is always seeded above. Everything below creates
-  // fake demo users, centres, reports, charges and payments, and must never reach production.
+  // fake demo users, hospitals, reports, charges and payments, and must never reach production.
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
     console.log('Reference data seeded. Demo data skipped because NODE_ENV=production.');
     return;
@@ -161,16 +161,37 @@ async function main() {
     });
     await prisma.userRoleAssignment.deleteMany({ where: { userId: user.id } });
     await prisma.userRoleAssignment.create({
-      data: { organizationId: org.id, userId: user.id, roleId: roles.get(u.role)!, centreId: null },
+      data: {
+        organizationId: org.id,
+        userId: user.id,
+        roleId: roles.get(u.role)!,
+        hospitalId: null,
+      },
     });
   }
 
-  const centres = new Map<string, string>();
+  // The demo accounts sign in with @hnb.local, so that domain must be approved for the organisation.
+  const demoAdmin = await prisma.user.findFirstOrThrow({
+    where: { organizationId: org.id, email: 'admin@hnb.local' },
+    select: { id: true },
+  });
+  await prisma.approvedDomain.upsert({
+    where: { organizationId_domain: { organizationId: org.id, domain: 'hnb.local' } },
+    update: { isActive: true },
+    create: {
+      organizationId: org.id,
+      domain: 'hnb.local',
+      note: 'Demo accounts',
+      createdById: demoAdmin.id,
+    },
+  });
+
+  const hospitals = new Map<string, string>();
   const departments = new Map<string, string>();
   const rules = new Map<string, { id: string; rate: Decimal }>();
 
-  for (const c of CENTRES) {
-    const centre = await prisma.centre.upsert({
+  for (const c of HOSPITALS) {
+    const hospital = await prisma.hospital.upsert({
       where: { organizationId_code: { organizationId: org.id, code: c.code } },
       update: { name: c.name, status: 'ACTIVE', paymentTermsDays: c.paymentTermsDays },
       create: {
@@ -178,8 +199,8 @@ async function main() {
         code: c.code,
         name: c.name,
         address: `${c.city}, Nigeria`,
-        contactName: `${c.city} Centre Manager`,
-        contactEmail: `centre.${c.code.toLowerCase()}@hnb.local`,
+        contactName: `${c.city} Hospital Manager`,
+        contactEmail: `hospital.${c.code.toLowerCase()}@hnb.local`,
         status: 'ACTIVE',
         paymentTermsDays: c.paymentTermsDays,
         gracePeriodDays: 5,
@@ -187,23 +208,23 @@ async function main() {
         notes: DEMO,
       },
     });
-    centres.set(c.code, centre.id);
+    hospitals.set(c.code, hospital.id);
 
     for (const d of c.departments) {
       const dept = await prisma.department.upsert({
-        where: { centreId_code: { centreId: centre.id, code: d.code } },
+        where: { hospitalId_code: { hospitalId: hospital.id, code: d.code } },
         update: { name: d.name },
-        create: { centreId: centre.id, code: d.code, name: d.name },
+        create: { hospitalId: hospital.id, code: d.code, name: d.name },
       });
       departments.set(`${c.code}:${d.code}`, dept.id);
 
       let rule = await prisma.chargeRule.findFirst({
-        where: { centreId: centre.id, departmentId: dept.id, name: `${d.name} service charge` },
+        where: { hospitalId: hospital.id, departmentId: dept.id, name: `${d.name} service charge` },
       });
       if (!rule) {
         rule = await prisma.chargeRule.create({
           data: {
-            centreId: centre.id,
+            hospitalId: hospital.id,
             departmentId: dept.id,
             name: `${d.name} service charge`,
             basis: 'PERCENTAGE',
@@ -220,9 +241,9 @@ async function main() {
 
     for (const ch of CHANNELS) {
       const channel = await prisma.paymentChannel.upsert({
-        where: { centreId_code: { centreId: centre.id, code: ch.code } },
+        where: { hospitalId_code: { hospitalId: hospital.id, code: ch.code } },
         update: { name: ch.name },
-        create: { centreId: centre.id, code: ch.code, name: ch.name },
+        create: { hospitalId: hospital.id, code: ch.code, name: ch.name },
       });
       const aliases =
         ch.code === 'TRANSFER'
@@ -240,12 +261,12 @@ async function main() {
     }
 
     let agreement = await prisma.commercialAgreement.findFirst({
-      where: { centreId: centre.id, name: 'Demo master service-charge agreement' },
+      where: { hospitalId: hospital.id, name: 'Demo master service-charge agreement' },
     });
     if (!agreement) {
       agreement = await prisma.commercialAgreement.create({
         data: {
-          centreId: centre.id,
+          hospitalId: hospital.id,
           name: 'Demo master service-charge agreement',
           effectiveFrom: new Date(Date.UTC(2023, 0, 1)),
           status: 'ACTIVE',
@@ -254,7 +275,7 @@ async function main() {
       });
     }
     await prisma.chargeRule.updateMany({
-      where: { centreId: centre.id, agreementId: null },
+      where: { hospitalId: hospital.id, agreementId: null },
       data: { agreementId: agreement.id },
     });
   }
@@ -263,7 +284,7 @@ async function main() {
   const currentMonth = startOfMonth(today);
   const createdReceivables: Array<{
     id: string;
-    centreId: string;
+    hospitalId: string;
     balance: Decimal;
     dueDate: Date;
   }> = [];
@@ -277,8 +298,8 @@ async function main() {
         : endOfMonth(month);
     const reportDate = periodEnd;
 
-    for (const c of CENTRES) {
-      const centreId = centres.get(c.code)!;
+    for (const c of HOSPITALS) {
+      const hospitalId = hospitals.get(c.code)!;
       const hash = `demo-${c.code}-${periodStart.toISOString().slice(0, 10)}`;
       const existing = await prisma.revenueReport.findFirst({ where: { sourceFileHash: hash } });
       if (existing) continue;
@@ -314,7 +335,7 @@ async function main() {
       const batch = await prisma.importBatch.create({
         data: {
           organizationId: org.id,
-          centreId,
+          hospitalId,
           status: ImportStatus.COMMITTED,
           fileName: `demo-revenue-${c.code}-${periodStart.toISOString().slice(0, 7)}.csv`,
           fileHash: hash,
@@ -333,7 +354,7 @@ async function main() {
       const report = await prisma.revenueReport.create({
         data: {
           organizationId: org.id,
-          centreId,
+          hospitalId,
           periodStart,
           periodEnd,
           reportDate,
@@ -370,7 +391,7 @@ async function main() {
       });
 
       const existingRun = await prisma.chargeRun.findFirst({
-        where: { centreId, periodStart, periodEnd },
+        where: { hospitalId, periodStart, periodEnd },
       });
       if (existingRun) continue;
 
@@ -387,7 +408,7 @@ async function main() {
       const run = await prisma.chargeRun.create({
         data: {
           organizationId: org.id,
-          centreId,
+          hospitalId,
           periodStart,
           periodEnd,
           asOf,
@@ -465,7 +486,7 @@ async function main() {
         const receivable = await prisma.receivable.create({
           data: {
             organizationId: org.id,
-            centreId,
+            hospitalId,
             chargeLineId: line.id,
             reference,
             description: `Service charge — ${line.ruleName ?? 'service charge'} — ${periodStart.toISOString().slice(0, 7)}`,
@@ -477,7 +498,7 @@ async function main() {
             ledgerEntries: {
               create: {
                 organizationId: org.id,
-                centreId,
+                hospitalId,
                 type: 'CHARGE',
                 debit: line.chargeAmount,
                 credit: 0,
@@ -492,7 +513,7 @@ async function main() {
         });
         createdReceivables.push({
           id: receivable.id,
-          centreId,
+          hospitalId,
           balance: new Decimal(receivable.balance),
           dueDate,
         });
@@ -507,9 +528,9 @@ async function main() {
     const officerId = (await prisma.user.findFirst({
       where: { organizationId: org.id, email: 'officer@hnb.local' },
     }))!.id;
-    for (const c of CENTRES) {
-      const centreId = centres.get(c.code)!;
-      const target = createdReceivables.filter((r) => r.centreId === centreId);
+    for (const c of HOSPITALS) {
+      const hospitalId = hospitals.get(c.code)!;
+      const target = createdReceivables.filter((r) => r.hospitalId === hospitalId);
       if (!target.length) continue;
       const outstanding = target.reduce((a, r) => a.plus(r.balance), new Decimal(0));
       const receiptAmount = outstanding.mul(0.55).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
@@ -518,7 +539,7 @@ async function main() {
       const payment = await prisma.payment.create({
         data: {
           organizationId: org.id,
-          centreId,
+          hospitalId,
           receiptDate: addDays(new Date(), -14),
           amount: receiptAmount,
           unallocatedAmount: receiptAmount,
@@ -556,7 +577,7 @@ async function main() {
           prisma.ledgerEntry.create({
             data: {
               organizationId: org.id,
-              centreId,
+              hospitalId,
               receivableId: r.id,
               type: 'PAYMENT_ALLOCATION',
               debit: 0,

@@ -6,7 +6,7 @@ import { AdjustmentDialog, DisputeDialog } from '../components/AdjustmentDialogs
 import { can } from '../lib/permissions';
 import { Button, Card, EmptyState, ErrorNotice, KeyValue, Loading, Notice, PageHeader, StatusBadge, Table, Td, Th } from '../components/ui';
 import { api } from '../lib/api';
-import { centreLabel, formatDate, formatDateTime, formatMoney, titleCase } from '../lib/format';
+import { hospitalLabel, formatDate, formatDateTime, formatMoney, titleCase } from '../lib/format';
 import type { ReceivableDetail } from '../lib/types';
 
 export function ReceivableDetailPage() {
@@ -60,9 +60,9 @@ export function ReceivableDetailPage() {
         <KeyValue
           items={[
             [
-              'Centre',
-              <Link key="c" className="text-brand-700 hover:underline" to={`/centres/${r.centre.id}`}>
-                {centreLabel(r.centre)}
+              'Hospital',
+              <Link key="c" className="text-brand-700 hover:underline" to={`/hospitals/${r.hospital.id}`}>
+                {hospitalLabel(r.hospital)}
               </Link>,
             ],
             ['Due date', formatDate(r.dueDate)],
@@ -151,10 +151,10 @@ export function ReceivableDetailPage() {
       </Card>
 
       {dialog === 'adjustment' && (
-        <AdjustmentDialog receivable={{ id: r.id, reference: r.reference, balance: r.balance, centreId: r.centre.id }} onClose={() => setDialog(null)} />
+        <AdjustmentDialog receivable={{ id: r.id, reference: r.reference, balance: r.balance, hospitalId: r.hospital.id }} onClose={() => setDialog(null)} />
       )}
       {dialog === 'dispute' && (
-        <DisputeDialog receivable={{ id: r.id, reference: r.reference, balance: r.balance, centreId: r.centre.id }} onClose={() => setDialog(null)} />
+        <DisputeDialog receivable={{ id: r.id, reference: r.reference, balance: r.balance, hospitalId: r.hospital.id }} onClose={() => setDialog(null)} />
       )}
     </div>
   );

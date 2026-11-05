@@ -2,7 +2,7 @@
  * Pure rule-selection helpers for the service-charge engine.
  *
  * Decisions implemented (D-002 / D-003 / FR-REV-004):
- *  - precedence: department+channel > department > channel > centre default;
+ *  - precedence: department+channel > department > channel > hospital default;
  *  - a rule is only usable for a report when it is effective for the report's WHOLE period.
  *    A report that straddles a rate change must be split by period rather than silently
  *    charged at one of the two rates, and the caller cannot pick a rate with an "as-of" date.

@@ -31,7 +31,7 @@ function build() {
     paymentAllocation: { aggregate: track('allocation', agg('amount', null)) },
     receivable: { aggregate: track('receivable', agg('balance', '300.25', 5)) },
     importBatch: { count: track('importBatch', 0) },
-    centre: { count: track('centre', 0) },
+    hospital: { count: track('hospital', 0) },
     $transaction: jest.fn((queries: Promise<unknown>[]) => Promise.all(queries)),
   };
   return { service: new DashboardService(prisma as never), calls };
@@ -39,7 +39,7 @@ function build() {
 
 describe('dashboard summary', () => {
   const all = makeUser('a', [grant('R', ['dashboard.read'], 'ALL')]);
-  const scoped = makeUser('b', [grant('R', ['dashboard.read'], ['centre-a'])]);
+  const scoped = makeUser('b', [grant('R', ['dashboard.read'], ['hospital-a'])]);
 
   it('returns separately labelled measures as 2 dp strings, null sums as zero', async () => {
     const { service } = build();
@@ -67,19 +67,19 @@ describe('dashboard summary', () => {
     expect(result.measures.owedForPeriod.percentPaid).toBe('396.0');
   });
 
-  it("limits every query to the caller's centres", async () => {
+  it("limits every query to the caller's hospitals", async () => {
     const { service, calls } = build();
     await service.summary(scoped, {});
     for (const name of ['revenueReport', 'chargeRun', 'ledgerEntry', 'payment', 'receivable']) {
       const where = (calls[name][0] as { where: Record<string, unknown> }).where;
-      expect(where.centreId).toEqual({ in: ['centre-a'] });
+      expect(where.hospitalId).toEqual({ in: ['hospital-a'] });
       expect(where.organizationId).toBe('org-1');
     }
   });
 
-  it("refuses a centre outside the caller's scope", async () => {
+  it("refuses a hospital outside the caller's scope", async () => {
     const { service } = build();
-    await expect(service.summary(scoped, { centreId: 'centre-b' })).rejects.toThrow();
+    await expect(service.summary(scoped, { hospitalId: 'hospital-b' })).rejects.toThrow();
   });
 
   it('counts only posted receipts as cash received (drafts and reversals excluded)', async () => {

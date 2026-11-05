@@ -1,12 +1,12 @@
 /**
  * One role assignment: the permissions of a single role, valid only for that assignment's
- * own centre scope. Scopes are never pooled across assignments (see narrowUserScope).
+ * own hospital scope. Scopes are never pooled across assignments (see narrowUserScope).
  */
 export type Grant = {
   roleCode: string;
   permissions: string[];
-  allCentres: boolean;
-  centreIds: string[];
+  allHospitals: boolean;
+  hospitalIds: string[];
 };
 
 export type AuthUser = {
@@ -18,8 +18,8 @@ export type AuthUser = {
   /** Union of all permissions; for display only. Authorization uses `grants`. */
   permissions: string[];
   /** Union of all scopes; for display only until the guard narrows it per request. */
-  centreIds: string[];
-  allCentres: boolean;
+  hospitalIds: string[];
+  allHospitals: boolean;
   grants: Grant[];
   /** True once the person has confirmed an authenticator app. */
   mfaEnabled?: boolean;

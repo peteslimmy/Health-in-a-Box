@@ -31,7 +31,7 @@ const detail = (overrides: Record<string, unknown> = {}, errors = tally) => ({
   createdById: 'uploader',
   committedReportId: null,
   committedReport: null,
-  centre: { id: 'c1', code: 'UATH', name: 'UATH' },
+  hospital: { id: 'c1', code: 'UATH', name: 'UATH' },
   createdBy: { id: 'uploader', fullName: 'Una Uploader', email: 'u@x' },
   errorCount: errors.length,
   validationJson: { errors, warnings: [], flags: [], grandTotal: '1000.00', channelTotal: '900.00' },
@@ -78,13 +78,13 @@ describe('approving report differences', () => {
 
   it('sends the reason to the approval route, not the ordinary commit', async () => {
     open(detail(), ['imports.read', 'imports.approve_variance']);
-    await userEvent.type(await screen.findByLabelText('Why are these differences acceptable?'), 'Centre confirmed the late cheque by phone');
+    await userEvent.type(await screen.findByLabelText('Why are these differences acceptable?'), 'Hospital confirmed the late cheque by phone');
     await userEvent.click(screen.getByRole('checkbox', { name: /I have reviewed the differences/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Commit with approved differences' }));
     await waitFor(() =>
       expect(hoisted.api).toHaveBeenCalledWith('/imports/imp-1/commit-with-variance', {
         method: 'POST',
-        body: { reason: 'Centre confirmed the late cheque by phone' },
+        body: { reason: 'Hospital confirmed the late cheque by phone' },
       }),
     );
     expect(hoisted.api.mock.calls.some((c) => c[0] === '/imports/imp-1/commit')).toBe(false);
@@ -105,7 +105,7 @@ describe('approving report differences', () => {
   });
 
   it('does not offer approval when something other than a total difference is wrong', async () => {
-    const mixed = [...tally, { code: 'UNKNOWN_DEPARTMENT', row: 5, message: 'Department "X" is not configured for this centre' }];
+    const mixed = [...tally, { code: 'UNKNOWN_DEPARTMENT', row: 5, message: 'Department "X" is not configured for this hospital' }];
     open(detail({}, mixed), ['imports.read', 'imports.approve_variance']);
     await screen.findByText(/must be fixed before this can be committed/);
     expect(screen.queryByText('Approve the differences and commit')).toBeNull();
@@ -120,7 +120,7 @@ describe('approving report differences', () => {
         committedReport: {
           id: 'r1',
           varianceApprovedAt: '2026-10-28T10:00:00Z',
-          varianceReason: 'Centre confirmed the late cheque by phone',
+          varianceReason: 'Hospital confirmed the late cheque by phone',
           varianceApprovedBy: { id: 'a', fullName: 'Ada Approver' },
           varianceJson: { printedGrandTotal: '1000.00', evidencedTotal: '900.00', difference: '100.00', linesWithDifference: [], findings: 2, findingsByCode: {}, accepted: [] },
         },
@@ -129,7 +129,7 @@ describe('approving report differences', () => {
     );
     expect(await screen.findByText('Committed with approved differences')).toBeInTheDocument();
     expect(screen.getByText(/Ada Approver accepted the differences/)).toBeInTheDocument();
-    expect(screen.getByText(/Centre confirmed the late cheque by phone/)).toBeInTheDocument();
+    expect(screen.getByText(/Hospital confirmed the late cheque by phone/)).toBeInTheDocument();
     expect(screen.queryByText('Approve the differences and commit')).toBeNull();
   });
 });

@@ -67,7 +67,7 @@ describe('reportingStatus', () => {
     expect(reportingStatus(today, '2026-10-19')).toMatchObject({ daysSince: 8, late: true });
   });
 
-  it('treats a centre that has never reported as late', () => {
+  it('treats a hospital that has never reported as late', () => {
     expect(reportingStatus(today, null)).toEqual({
       lastReportEnd: null,
       daysSince: null,

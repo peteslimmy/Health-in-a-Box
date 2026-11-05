@@ -15,7 +15,7 @@ import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone, parseDate } from '../common/utils/dates';
 import { moneyString } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess, centreWhere, narrowUserScope } from '../common/utils/scope';
+import { assertHospitalAccess, hospitalWhere, narrowUserScope } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CoveredPeriod, assessCoverage, planTrim, range, readableDate } from './coverage';
 import {
@@ -65,7 +65,7 @@ export class ImportsService {
     const status = query.status ? this.status(query.status) : undefined;
     const where: Prisma.ImportBatchWhereInput = {
       organizationId: user.organizationId,
-      ...centreWhere(user, query.centreId),
+      ...hospitalWhere(user, query.hospitalId),
       ...(status ? { status } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
@@ -76,7 +76,7 @@ export class ImportsService {
         take,
         select: {
           id: true,
-          centreId: true,
+          hospitalId: true,
           status: true,
           kind: true,
           fileName: true,
@@ -87,7 +87,7 @@ export class ImportsService {
           totalAmount: true,
           committedReportId: true,
           createdAt: true,
-          centre: { select: { id: true, code: true, name: true } },
+          hospital: { select: { id: true, code: true, name: true } },
           createdBy: { select: { id: true, fullName: true, email: true } },
         },
       }),
@@ -102,7 +102,7 @@ export class ImportsService {
       // Storage keys and the raw uploaded rows are internal; the API never returns them.
       omit: { fileKey: true, rowsJson: true },
       include: {
-        centre: { select: { id: true, code: true, name: true } },
+        hospital: { select: { id: true, code: true, name: true } },
         createdBy: { select: { id: true, fullName: true, email: true } },
         committedReport: {
           select: {
@@ -116,7 +116,7 @@ export class ImportsService {
       },
     });
     if (!batch) throw new NotFoundException('Import batch not found');
-    assertCentreAccess(user, batch.centreId);
+    assertHospitalAccess(user, batch.hospitalId);
     const validation = batch.validationJson as Record<string, unknown> | null;
     const errorCount = Array.isArray(validation?.errors) ? validation.errors.length : 0;
     return { ...batch, errorCount };
@@ -167,16 +167,16 @@ export class ImportsService {
       });
     }
 
-    const centre = await this.prisma.centre.findFirst({
-      where: { id: dto.centreId, organizationId: user.organizationId },
+    const hospital = await this.prisma.hospital.findFirst({
+      where: { id: dto.hospitalId, organizationId: user.organizationId },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    assertCentreAccess(user, centre.id);
-    // FR-CEN-009: a draft, suspended or archived centre cannot receive revenue reports.
-    if (centre.status !== 'ACTIVE') {
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    assertHospitalAccess(user, hospital.id);
+    // FR-CEN-009: a draft, suspended or archived hospital cannot receive revenue reports.
+    if (hospital.status !== 'ACTIVE') {
       throw new ConflictException({
-        code: 'CENTRE_NOT_ACTIVE',
-        message: `The centre is ${centre.status.toLowerCase()}; activate it before importing revenue`,
+        code: 'HOSPITAL_NOT_ACTIVE',
+        message: `The hospital is ${hospital.status.toLowerCase()}; activate it before importing revenue`,
       });
     }
 
@@ -226,7 +226,7 @@ export class ImportsService {
     const duplicate = await this.prisma.importBatch.findFirst({
       where: {
         organizationId: user.organizationId,
-        centreId: centre.id,
+        hospitalId: hospital.id,
         fileHash,
         status: { in: DUPLICATE_STATES },
       },
@@ -235,7 +235,7 @@ export class ImportsService {
     if (duplicate) {
       throw new ConflictException({
         code: 'DUPLICATE_FILE',
-        message: 'This exact file was already uploaded for the centre',
+        message: 'This exact file was already uploaded for the hospital',
         details: [duplicate],
       });
     }
@@ -243,12 +243,12 @@ export class ImportsService {
     const loadSetup = () =>
       this.prisma.$transaction([
         this.prisma.department.findMany({
-          where: { centreId: centre.id },
+          where: { hospitalId: hospital.id },
           include: { aliases: true },
           orderBy: { code: 'asc' },
         }),
         this.prisma.paymentChannel.findMany({
-          where: { centreId: centre.id, isActive: true },
+          where: { hospitalId: hospital.id, isActive: true },
           include: { aliases: true },
           orderBy: { code: 'asc' },
         }),
@@ -276,30 +276,30 @@ export class ImportsService {
       const preview = parse(departments, channels);
       const { unmatched } = preview;
       if (unmatched.departments.length > 0 || unmatched.channels.length > 0) {
-        const allowed = narrowUserScope(user, ['centres.update']);
+        const allowed = narrowUserScope(user, ['hospitals.update']);
         if (!allowed) {
           throw new ForbiddenException({
             code: 'SETUP_NOT_PERMITTED',
-            message: 'Adding departments and channels needs the centre-update permission',
+            message: 'Adding departments and channels needs the hospital-update permission',
           });
         }
-        assertCentreAccess(allowed, centre.id);
-        await this.addMissingSetup(user, centre.id, unmatched, departments, channels, setupAdded);
+        assertHospitalAccess(allowed, hospital.id);
+        await this.addMissingSetup(user, hospital.id, unmatched, departments, channels, setupAdded);
         [departments, channels] = await loadSetup();
       }
     }
     if (departments.length === 0) {
       throw new BadRequestException({
-        code: 'CENTRE_NOT_CONFIGURED',
+        code: 'HOSPITAL_NOT_CONFIGURED',
         message:
-          'The centre has no departments yet. Add them in the centre setup, or upload again with "add missing departments and channels" ticked',
+          'The hospital has no departments yet. Add them in the hospital setup, or upload again with "add missing departments and channels" ticked',
       });
     }
     if (channels.length === 0) {
       throw new BadRequestException({
-        code: 'CENTRE_NOT_CONFIGURED',
+        code: 'HOSPITAL_NOT_CONFIGURED',
         message:
-          'The centre has no payment channels yet. Add them in the centre setup, or upload again with "add missing departments and channels" ticked',
+          'The hospital has no payment channels yet. Add them in the hospital setup, or upload again with "add missing departments and channels" ticked',
       });
     }
 
@@ -309,7 +309,11 @@ export class ImportsService {
     // days skipped between reports are flagged for acknowledgement.
     const [committedReports, pendingBatches] = await this.prisma.$transaction([
       this.prisma.revenueReport.findMany({
-        where: { organizationId: user.organizationId, centreId: centre.id, status: 'COMMITTED' },
+        where: {
+          organizationId: user.organizationId,
+          hospitalId: hospital.id,
+          status: 'COMMITTED',
+        },
         select: { periodStart: true, periodEnd: true, sourceFileName: true, id: true },
         orderBy: { periodStart: 'asc' },
         take: 2000,
@@ -317,7 +321,7 @@ export class ImportsService {
       this.prisma.importBatch.findMany({
         where: {
           organizationId: user.organizationId,
-          centreId: centre.id,
+          hospitalId: hospital.id,
           status: { in: [ImportStatus.READY_TO_COMMIT, ImportStatus.PROCESSING] },
         },
         select: { periodStart: true, periodEnd: true, fileName: true, id: true },
@@ -405,10 +409,10 @@ export class ImportsService {
       }
     }
 
-    // Content fingerprint: the same figures for the same centre and period are the same report,
+    // Content fingerprint: the same figures for the same hospital and period are the same report,
     // however the file is named or formatted.
     const contentFingerprint = fingerprintReport(
-      centre.id,
+      hospital.id,
       iso(takenStart),
       iso(takenEnd),
       result.lines,
@@ -416,7 +420,7 @@ export class ImportsService {
     const sameContent = await this.prisma.importBatch.findFirst({
       where: {
         organizationId: user.organizationId,
-        centreId: centre.id,
+        hospitalId: hospital.id,
         contentFingerprint,
         periodStart: takenStart,
         periodEnd: takenEnd,
@@ -428,7 +432,7 @@ export class ImportsService {
       throw new ConflictException({
         code: 'DUPLICATE_REPORT',
         message:
-          'A report with identical figures for this centre and period already exists. Submit a correction instead of re-uploading it.',
+          'A report with identical figures for this hospital and period already exists. Submit a correction instead of re-uploading it.',
         details: [sameContent],
       });
     }
@@ -436,7 +440,7 @@ export class ImportsService {
     const coverage = assessCoverage({
       start: iso(takenStart),
       end: iso(takenEnd),
-      today: dateInTimeZone(new Date(), centre.timezone),
+      today: dateInTimeZone(new Date(), hospital.timezone),
       existing: coverageExisting,
     });
     for (const error of coverage.errors) {
@@ -466,15 +470,15 @@ export class ImportsService {
           message: `The report was printed on ${readableDate(pdf.printDate)}, before the period ends (${readableDate(iso(periodEnd))}); it cannot include the final days`,
         });
       }
-      const words = centre.name
+      const words = hospital.name
         .toLowerCase()
         .split(/[^a-z0-9]+/)
         .filter((word) => word.length > 3);
       const title = (pdf.title ?? '').toLowerCase();
       if (words.length > 0 && !words.some((word) => title.includes(word))) {
         result.warnings.push({
-          code: 'TITLE_CENTRE_MISMATCH',
-          message: `The report is titled "${pdf.title ?? 'unknown'}", which does not mention "${centre.name}". Confirm it belongs to this centre`,
+          code: 'TITLE_HOSPITAL_MISMATCH',
+          message: `The report is titled "${pdf.title ?? 'unknown'}", which does not mention "${hospital.name}". Confirm it belongs to this hospital`,
         });
       }
     }
@@ -497,7 +501,7 @@ export class ImportsService {
         const created = await tx.importBatch.create({
           data: {
             organizationId: user.organizationId,
-            centreId: centre.id,
+            hospitalId: hospital.id,
             kind: 'REVENUE_REPORT',
             status,
             fileName: file.originalname,
@@ -540,13 +544,13 @@ export class ImportsService {
             totalAmount: result.grandTotal,
             createdById: user.id,
           },
-          include: { centre: { select: { id: true, code: true, name: true } } },
+          include: { hospital: { select: { id: true, code: true, name: true } } },
         });
         await this.audit.record(
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: centre.id,
+            hospitalId: hospital.id,
             action: 'IMPORT_UPLOADED',
             targetType: 'ImportBatch',
             targetId: created.id,
@@ -574,10 +578,10 @@ export class ImportsService {
     return batch;
   }
 
-  /** Creates the departments and channels named in a file that the centre does not have yet. */
+  /** Creates the departments and channels named in a file that the hospital does not have yet. */
   private async addMissingSetup(
     user: AuthUser,
-    centreId: string,
+    hospitalId: string,
     unmatched: { departments: string[]; channels: string[] },
     departments: Array<{ code: string }>,
     channels: Array<{ code: string }>,
@@ -600,14 +604,14 @@ export class ImportsService {
     await this.prisma.$transaction(async (tx) => {
       for (const name of unmatched.departments.slice(0, 500)) {
         const created = await tx.department.create({
-          data: { centreId, code: makeCode(name, takenDepartments), name },
+          data: { hospitalId, code: makeCode(name, takenDepartments), name },
         });
         added.departments.push(created.name);
         await this.audit.record(
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId,
+            hospitalId,
             action: 'DEPARTMENT_CREATED',
             targetType: 'Department',
             targetId: created.id,
@@ -619,14 +623,14 @@ export class ImportsService {
       }
       for (const name of unmatched.channels.slice(0, 50)) {
         const created = await tx.paymentChannel.create({
-          data: { centreId, code: makeCode(name, takenChannels), name },
+          data: { hospitalId, code: makeCode(name, takenChannels), name },
         });
         added.channels.push(created.name);
         await this.audit.record(
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId,
+            hospitalId,
             action: 'PAYMENT_CHANNEL_CREATED',
             targetType: 'PaymentChannel',
             targetId: created.id,
@@ -644,7 +648,7 @@ export class ImportsService {
       where: { id, organizationId: user.organizationId },
     });
     if (!batch) throw new NotFoundException('Import batch not found');
-    assertCentreAccess(user, batch.centreId);
+    assertHospitalAccess(user, batch.hospitalId);
     if (batch.status === ImportStatus.COMMITTED && batch.committedReportId) {
       return { status: batch.status, reportId: batch.committedReportId, alreadyCommitted: true };
     }
@@ -758,12 +762,12 @@ export class ImportsService {
   /** Days may have been reported by another upload since this one was checked; existing records are never overwritten. */
   private async assertPeriodStillFree(
     user: AuthUser,
-    batch: { centreId: string; periodStart: Date; periodEnd: Date },
+    batch: { hospitalId: string; periodStart: Date; periodEnd: Date },
   ) {
     const alreadyReported = await this.prisma.revenueReport.findFirst({
       where: {
         organizationId: user.organizationId,
-        centreId: batch.centreId,
+        hospitalId: batch.hospitalId,
         status: 'COMMITTED',
         periodStart: { lte: batch.periodEnd },
         periodEnd: { gte: batch.periodStart },
@@ -790,7 +794,7 @@ export class ImportsService {
       where: { id, organizationId: user.organizationId },
     });
     if (!batch) throw new NotFoundException('Import batch not found');
-    assertCentreAccess(user, batch.centreId);
+    assertHospitalAccess(user, batch.hospitalId);
     if (batch.status === ImportStatus.COMMITTED && batch.committedReportId) {
       return {
         status: batch.status,
@@ -904,7 +908,7 @@ export class ImportsService {
     user: AuthUser,
     batch: {
       id: string;
-      centreId: string;
+      hospitalId: string;
       periodStart: Date;
       periodEnd: Date;
       fileName: string | null;
@@ -947,7 +951,7 @@ export class ImportsService {
       const created = await tx.revenueReport.create({
         data: {
           organizationId: user.organizationId,
-          centreId: batch.centreId,
+          hospitalId: batch.hospitalId,
           periodStart: batch.periodStart,
           periodEnd: batch.periodEnd,
           reportDate,
@@ -988,7 +992,7 @@ export class ImportsService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: batch.centreId,
+          hospitalId: batch.hospitalId,
           action: input.variance ? 'IMPORT_COMMITTED_WITH_VARIANCE' : 'IMPORT_COMMITTED',
           targetType: 'ImportBatch',
           targetId: batch.id,
@@ -1023,10 +1027,10 @@ export class ImportsService {
   async downloadSource(user: AuthUser, id: string) {
     const batch = await this.prisma.importBatch.findFirst({
       where: { id, organizationId: user.organizationId },
-      select: { id: true, centreId: true, fileKey: true, fileName: true },
+      select: { id: true, hospitalId: true, fileKey: true, fileName: true },
     });
     if (!batch) throw new NotFoundException('Import batch not found');
-    assertCentreAccess(user, batch.centreId);
+    assertHospitalAccess(user, batch.hospitalId);
     if (!batch.fileKey) {
       throw new NotFoundException({
         code: 'FILE_NOT_STORED',
@@ -1037,7 +1041,7 @@ export class ImportsService {
     await this.audit.record({
       organizationId: user.organizationId,
       actorId: user.id,
-      centreId: batch.centreId,
+      hospitalId: batch.hospitalId,
       action: 'IMPORT_SOURCE_DOWNLOADED',
       targetType: 'ImportBatch',
       targetId: batch.id,
@@ -1053,16 +1057,16 @@ export class ImportsService {
     return { content, fileName: name, contentType };
   }
 
-  async template(user: AuthUser, centreId: string) {
-    const centre = await this.prisma.centre.findFirst({
-      where: { id: centreId, organizationId: user.organizationId },
+  async template(user: AuthUser, hospitalId: string) {
+    const hospital = await this.prisma.hospital.findFirst({
+      where: { id: hospitalId, organizationId: user.organizationId },
       include: {
         departments: { orderBy: { code: 'asc' } },
         paymentChannels: { where: { isActive: true }, orderBy: { code: 'asc' } },
       },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    assertCentreAccess(user, centre.id);
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    assertHospitalAccess(user, hospital.id);
     // Neutralise spreadsheet formula injection: cells starting with = + - @ are prefixed.
     const escape = (raw: string) => {
       const value = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
@@ -1070,18 +1074,18 @@ export class ImportsService {
     };
     const header = [
       'Department',
-      ...centre.paymentChannels.map((channel) => channel.name),
+      ...hospital.paymentChannels.map((channel) => channel.name),
       'Total Amount',
     ];
-    const rows = centre.departments.map((department) => [
+    const rows = hospital.departments.map((department) => [
       department.name,
-      ...centre.paymentChannels.map(() => '0.00'),
+      ...hospital.paymentChannels.map(() => '0.00'),
       '0.00',
     ]);
     const csv = [header, ...rows].map((row) => row.map(escape).join(',')).join('\r\n');
     return {
-      // The centre code is user-entered: keep only filename-safe characters (no header injection).
-      fileName: `revenue-template-${centre.code.replace(/[^A-Za-z0-9_-]/g, '_')}.csv`,
+      // The hospital code is user-entered: keep only filename-safe characters (no header injection).
+      fileName: `revenue-template-${hospital.code.replace(/[^A-Za-z0-9_-]/g, '_')}.csv`,
       content: `${csv}\r\n`,
     };
   }
@@ -1091,7 +1095,7 @@ export class ImportsService {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return new ConflictException({
         code: 'DUPLICATE_REPORT',
-        message: 'A report with identical figures for this centre and period already exists',
+        message: 'A report with identical figures for this hospital and period already exists',
       });
     }
     return error;

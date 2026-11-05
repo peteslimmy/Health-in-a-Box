@@ -25,7 +25,7 @@ const item = (overrides: Partial<AdjustmentItem> = {}): AdjustmentItem => ({
   createdAt: '2026-10-20T10:00:00.000Z',
   decidedAt: null,
   decisionNote: null,
-  centre: { id: 'c1', code: 'C1', name: 'One' },
+  hospital: { id: 'c1', code: 'C1', name: 'One' },
   receivable: { id: 'r1', reference: 'RCV-1', balance: '1000.00' },
   createdBy: { id: 'someone-else', fullName: 'Pat Officer' },
   decidedBy: null,

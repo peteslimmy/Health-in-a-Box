@@ -47,7 +47,7 @@ export function ReportsPage() {
       ))}
       <Card title="About these reports">
         <p className="text-sm text-slate-600">
-          Reports describe what centres reported and what the ledger holds. Reported revenue is not verified against patient-level records or bank deposits.
+          Reports describe what hospitals reported and what the ledger holds. Reported revenue is not verified against patient-level records or bank deposits.
           Receipts received in a period are not payments against that period&apos;s charges.
         </p>
       </Card>

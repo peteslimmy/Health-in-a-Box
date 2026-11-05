@@ -9,8 +9,8 @@ import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { AccessModule } from './access/access.module';
-import { CentresModule } from './centres/centres.module';
-import { CentreSetupModule } from './centre-setup/centre-setup.module';
+import { HospitalsModule } from './hospitals/hospitals.module';
+import { HospitalSetupModule } from './hospital-setup/hospital-setup.module';
 import { PlatformModule } from './platform/platform.module';
 import { UsersModule } from './users/users.module';
 import { ImportsModule } from './imports/imports.module';
@@ -40,8 +40,8 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     AccessModule,
     AuthModule,
     HealthModule,
-    CentresModule,
-    CentreSetupModule,
+    HospitalsModule,
+    HospitalSetupModule,
     PlatformModule,
     UsersModule,
     ImportsModule,

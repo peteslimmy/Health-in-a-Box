@@ -12,7 +12,7 @@ import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone, parseDate } from '../common/utils/dates';
 import { moneyString } from '../common/utils/money';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess, centreWhere } from '../common/utils/scope';
+import { assertHospitalAccess, hospitalWhere } from '../common/utils/scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOpeningBalanceDto, DecisionDto, ListQueryDto } from './dto/adjustment.dto';
 
@@ -32,7 +32,7 @@ export class OpeningBalancesService {
     const { page, pageSize, skip, take } = pagination(query);
     const where: Prisma.OpeningBalanceWhereInput = {
       organizationId: user.organizationId,
-      ...centreWhere(user, query.centreId),
+      ...hospitalWhere(user, query.hospitalId),
       ...(query.status ? { status: query.status as never } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
@@ -42,7 +42,7 @@ export class OpeningBalancesService {
         skip,
         take,
         include: {
-          centre: { select: { id: true, code: true, name: true } },
+          hospital: { select: { id: true, code: true, name: true } },
           receivable: { select: { id: true, reference: true } },
           createdBy: WHO,
           decidedBy: WHO,
@@ -65,11 +65,11 @@ export class OpeningBalancesService {
   private async assertNoOverlap(
     client: Prisma.TransactionClient | PrismaService,
     organizationId: string,
-    centreId: string,
+    hospitalId: string,
     asAt: Date,
   ) {
     const overlapping = await client.chargeRun.findFirst({
-      where: { organizationId, centreId, status: 'POSTED', periodStart: { lte: asAt } },
+      where: { organizationId, hospitalId, status: 'POSTED', periodStart: { lte: asAt } },
       select: { periodStart: true, periodEnd: true },
       orderBy: { periodStart: 'asc' },
     });
@@ -82,32 +82,32 @@ export class OpeningBalancesService {
   }
 
   async create(user: AuthUser, dto: CreateOpeningBalanceDto) {
-    assertCentreAccess(user, dto.centreId);
-    const centre = await this.prisma.centre.findFirst({
-      where: { id: dto.centreId, organizationId: user.organizationId },
+    assertHospitalAccess(user, dto.hospitalId);
+    const hospital = await this.prisma.hospital.findFirst({
+      where: { id: dto.hospitalId, organizationId: user.organizationId },
     });
-    if (!centre) throw new NotFoundException('Centre not found');
-    if (centre.status !== 'ACTIVE') {
+    if (!hospital) throw new NotFoundException('Hospital not found');
+    if (hospital.status !== 'ACTIVE') {
       throw new ConflictException({
-        code: 'CENTRE_NOT_ACTIVE',
-        message: `The centre is ${centre.status.toLowerCase()}; activate it first`,
+        code: 'HOSPITAL_NOT_ACTIVE',
+        message: `The hospital is ${hospital.status.toLowerCase()}; activate it first`,
       });
     }
     const asAt = parseDate(dto.asAt, 'asAt');
     const dueDate = parseDate(dto.dueDate, 'dueDate');
-    if (asAt.toISOString().slice(0, 10) > dateInTimeZone(new Date(), centre.timezone)) {
+    if (asAt.toISOString().slice(0, 10) > dateInTimeZone(new Date(), hospital.timezone)) {
       throw new BadRequestException({
         code: 'AS_AT_IN_FUTURE',
         message: 'An opening balance cannot be stated as at a future date',
       });
     }
-    await this.assertNoOverlap(this.prisma, user.organizationId, centre.id, asAt);
+    await this.assertNoOverlap(this.prisma, user.organizationId, hospital.id, asAt);
     try {
       return await this.prisma.$transaction(async (tx) => {
         const created = await tx.openingBalance.create({
           data: {
             organizationId: user.organizationId,
-            centreId: centre.id,
+            hospitalId: hospital.id,
             asAt,
             amount: dto.amount,
             dueDate,
@@ -119,7 +119,7 @@ export class OpeningBalancesService {
           {
             organizationId: user.organizationId,
             actorId: user.id,
-            centreId: centre.id,
+            hospitalId: hospital.id,
             action: 'OPENING_BALANCE_PROPOSED',
             targetType: 'OpeningBalance',
             targetId: created.id,
@@ -134,7 +134,7 @@ export class OpeningBalancesService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException({
           code: 'OPENING_BALANCE_EXISTS',
-          message: 'This centre already has an opening balance as at that date',
+          message: 'This hospital already has an opening balance as at that date',
         });
       }
       throw error;
@@ -144,10 +144,10 @@ export class OpeningBalancesService {
   async approve(user: AuthUser, id: string) {
     const found = await this.prisma.openingBalance.findFirst({
       where: { id, organizationId: user.organizationId },
-      include: { centre: true },
+      include: { hospital: true },
     });
     if (!found) throw new NotFoundException('Opening balance not found');
-    assertCentreAccess(user, found.centreId);
+    assertHospitalAccess(user, found.hospitalId);
     if (found.createdById === user.id) {
       throw new ForbiddenException({
         code: 'MAKER_CHECKER_VIOLATION',
@@ -158,13 +158,13 @@ export class OpeningBalancesService {
 
     return this.prisma.$transaction(async (tx) => {
       // History may have been posted since it was proposed.
-      await this.assertNoOverlap(tx, user.organizationId, found.centreId, found.asAt);
+      await this.assertNoOverlap(tx, user.organizationId, found.hospitalId, found.asAt);
       const asAtText = found.asAt.toISOString().slice(0, 10);
       const receivable = await tx.receivable.create({
         data: {
           organizationId: user.organizationId,
-          centreId: found.centreId,
-          reference: `OB-${found.centre.code}-${asAtText.replace(/-/g, '')}`,
+          hospitalId: found.hospitalId,
+          reference: `OB-${found.hospital.code}-${asAtText.replace(/-/g, '')}`,
           description: `Opening balance as at ${asAtText}`,
           originalAmount: found.amount,
           balance: found.amount,
@@ -190,7 +190,7 @@ export class OpeningBalancesService {
       await tx.ledgerEntry.create({
         data: {
           organizationId: user.organizationId,
-          centreId: found.centreId,
+          hospitalId: found.hospitalId,
           receivableId: receivable.id,
           type: 'OPENING_BALANCE',
           debit: found.amount,
@@ -206,7 +206,7 @@ export class OpeningBalancesService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: found.centreId,
+          hospitalId: found.hospitalId,
           action: 'OPENING_BALANCE_APPROVED',
           targetType: 'OpeningBalance',
           targetId: id,
@@ -224,7 +224,7 @@ export class OpeningBalancesService {
       where: { id, organizationId: user.organizationId },
     });
     if (!found) throw new NotFoundException('Opening balance not found');
-    assertCentreAccess(user, found.centreId);
+    assertHospitalAccess(user, found.hospitalId);
     if (found.createdById === user.id) {
       throw new ForbiddenException({
         code: 'MAKER_CHECKER_VIOLATION',
@@ -254,7 +254,7 @@ export class OpeningBalancesService {
         {
           organizationId: user.organizationId,
           actorId: user.id,
-          centreId: found.centreId,
+          hospitalId: found.hospitalId,
           action: 'OPENING_BALANCE_REJECTED',
           targetType: 'OpeningBalance',
           targetId: id,

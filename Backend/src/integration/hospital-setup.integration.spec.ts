@@ -1,5 +1,5 @@
 /**
- * The set-up wizard against a REAL PostgreSQL database: the whole centre is created together or
+ * The set-up wizard against a REAL PostgreSQL database: the whole hospital is created together or
  * not at all, aliases make the next report match, and the audit trail records it.
  *
  *   TEST_DATABASE_URL=postgresql://user:pass@localhost:5433/hnb_scratch?schema=public npm test
@@ -10,8 +10,8 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
-import { CentreSetupService } from '../centre-setup/centre-setup.service';
-import { allCentresUser } from '../testing/fixtures';
+import { HospitalSetupService } from '../hospital-setup/hospital-setup.service';
+import { superAdminUser } from '../testing/fixtures';
 
 const url = process.env.TEST_DATABASE_URL;
 const safe = !!url && /\/[^/?]*(test|scratch)[^/?]*(\?|$)/i.test(url);
@@ -20,9 +20,9 @@ const maybe = url && safe ? describe : describe.skip;
 // Real-database tests can be slow on a busy machine; the default 5 s would make them flaky.
 jest.setTimeout(30_000);
 
-maybe('centre set-up wizard against a real database', () => {
+maybe('hospital set-up wizard against a real database', () => {
   let prisma: PrismaClient;
-  let service: CentreSetupService;
+  let service: HospitalSetupService;
   let user: AuthUser;
   const suffix = randomUUID().slice(0, 8);
   const rows = [
@@ -43,7 +43,7 @@ maybe('centre set-up wizard against a real database', () => {
   };
   const body = (code: string, extra: Record<string, unknown> = {}) =>
     ({
-      centre: { code, name: `Centre ${code}` },
+      hospital: { code, name: `Hospital ${code}` },
       departments: [
         { printedName: 'ACCIDENT & EMERGENCY', name: 'Accident and Emergency', code: 'AE' },
         { printedName: 'PHARMACY', name: 'Pharmacy', code: 'PHARMACY' },
@@ -68,7 +68,7 @@ maybe('centre set-up wizard against a real database', () => {
         fullName: 'W',
       },
     });
-    user = { ...allCentresUser(person.id, ['centres.onboard']), organizationId: org.id };
+    user = { ...superAdminUser(person.id, ['hospitals.onboard']), organizationId: org.id };
     const stored = new Map<string, Buffer>();
     const storage = {
       put: async (buffer: Buffer, name: string) => {
@@ -77,7 +77,7 @@ maybe('centre set-up wizard against a real database', () => {
       },
       get: async (key: string) => stored.get(key)!,
     };
-    service = new CentreSetupService(
+    service = new HospitalSetupService(
       prisma as never,
       storage as never,
       new AuditService(prisma as never),
@@ -89,7 +89,7 @@ maybe('centre set-up wizard against a real database', () => {
     await prisma?.$disconnect();
   });
 
-  it('creates the centre, departments, channels, aliases, agreement and rule, and audits it', async () => {
+  it('creates the hospital, departments, channels, aliases, agreement and rule, and audits it', async () => {
     const draftId = await draftFor(`a-${suffix}.csv`);
     const result = await service.commit(
       user,
@@ -99,9 +99,9 @@ maybe('centre set-up wizard against a real database', () => {
         activate: true,
       }),
     );
-    expect(result.centre.status).toBe('ACTIVE');
-    const centre = await prisma.centre.findUniqueOrThrow({
-      where: { id: result.centre.id },
+    expect(result.hospital.status).toBe('ACTIVE');
+    const hospital = await prisma.hospital.findUniqueOrThrow({
+      where: { id: result.hospital.id },
       include: {
         departments: { include: { aliases: true }, orderBy: { code: 'asc' } },
         paymentChannels: true,
@@ -109,44 +109,44 @@ maybe('centre set-up wizard against a real database', () => {
         agreements: true,
       },
     });
-    expect(centre.departments.map((d) => d.code)).toEqual(['AE', 'PHARMACY']);
+    expect(hospital.departments.map((d) => d.code)).toEqual(['AE', 'PHARMACY']);
     // the printed name differs from the chosen one for the first department, so it is remembered
-    expect(centre.departments[0].aliases.map((a) => a.alias)).toEqual(['ACCIDENT & EMERGENCY']);
-    expect(centre.departments[1].aliases).toEqual([]);
-    expect(centre.paymentChannels).toHaveLength(2);
-    expect(centre.agreements).toHaveLength(1);
-    expect(centre.chargeRules).toHaveLength(1);
-    expect(centre.chargeRules[0].rate.toString()).toBe('7.5');
-    expect(centre.chargeRules[0].departmentId).toBeNull();
+    expect(hospital.departments[0].aliases.map((a) => a.alias)).toEqual(['ACCIDENT & EMERGENCY']);
+    expect(hospital.departments[1].aliases).toEqual([]);
+    expect(hospital.paymentChannels).toHaveLength(2);
+    expect(hospital.agreements).toHaveLength(1);
+    expect(hospital.chargeRules).toHaveLength(1);
+    expect(hospital.chargeRules[0].rate.toString()).toBe('7.5');
+    expect(hospital.chargeRules[0].departmentId).toBeNull();
 
     const audit = await prisma.auditEvent.findFirst({
-      where: { targetId: centre.id, action: 'CENTRE_CREATED' },
+      where: { targetId: hospital.id, action: 'HOSPITAL_CREATED' },
     });
     expect(audit?.summary).toContain('set-up wizard');
-    const draft = await prisma.centreSetupDraft.findUniqueOrThrow({ where: { id: draftId } });
+    const draft = await prisma.hospitalSetupDraft.findUniqueOrThrow({ where: { id: draftId } });
     expect(draft.status).toBe('COMPLETED');
-    expect(draft.centreId).toBe(centre.id);
+    expect(draft.hospitalId).toBe(hospital.id);
   });
 
-  it('is all or nothing: a failure part-way leaves no centre behind and the draft open', async () => {
+  it('is all or nothing: a failure part-way leaves no hospital behind and the draft open', async () => {
     const draftId = await draftFor(`b-${suffix}.csv`);
-    // A rate the database cannot store fails only when the rule is inserted, after the centre,
+    // A rate the database cannot store fails only when the rule is inserted, after the hospital,
     // departments and channels were already written inside the transaction.
     const broken = body(`X${suffix}`.toUpperCase(), {
       terms: { agreementName: 'Main', ratePercent: 99999999, effectiveFrom: '2026-09-25' },
     });
     await expect(service.commit(user, draftId, broken)).rejects.toBeDefined();
-    const left = await prisma.centre.findFirst({ where: { code: `X${suffix}`.toUpperCase() } });
+    const left = await prisma.hospital.findFirst({ where: { code: `X${suffix}`.toUpperCase() } });
     expect(left).toBeNull();
-    const draft = await prisma.centreSetupDraft.findUniqueOrThrow({ where: { id: draftId } });
+    const draft = await prisma.hospitalSetupDraft.findUniqueOrThrow({ where: { id: draftId } });
     expect(draft.status).toBe('OPEN');
   });
 
-  it('refuses a second centre with the same code, and a finished set-up cannot be reused', async () => {
+  it('refuses a second hospital with the same code, and a finished set-up cannot be reused', async () => {
     const code = `W${suffix}`.toUpperCase();
     const draftId = await draftFor(`c-${suffix}.csv`);
     await expect(service.commit(user, draftId, body(code))).rejects.toMatchObject({
-      response: { code: 'CENTRE_EXISTS' },
+      response: { code: 'HOSPITAL_EXISTS' },
     });
     const ok = await draftFor(`d-${suffix}.csv`);
     await service.commit(user, ok, body(`Y${suffix}`.toUpperCase()));
@@ -156,11 +156,11 @@ maybe('centre set-up wizard against a real database', () => {
   });
 
   it('proposes names that the next report will match, through the saved aliases', async () => {
-    const centre = await prisma.centre.findFirstOrThrow({
+    const hospital = await prisma.hospital.findFirstOrThrow({
       where: { code: `W${suffix}`.toUpperCase() },
       include: { departments: { include: { aliases: true } } },
     });
-    const keys = centre.departments.flatMap((d) => [
+    const keys = hospital.departments.flatMap((d) => [
       d.code,
       d.name,
       ...d.aliases.map((a) => a.alias),

@@ -19,24 +19,24 @@ import {
 export class ChargeConfigController {
   constructor(private readonly config: ChargeConfigService) {}
 
-  @Get('centres/:centreId/agreements')
+  @Get('hospitals/:hospitalId/agreements')
   @Permissions('charge_rules.read')
   listAgreements(
     @CurrentUser() user: AuthUser,
-    @Param('centreId', ParseUUIDPipe) centreId: string,
+    @Param('hospitalId', ParseUUIDPipe) hospitalId: string,
     @Query() query: AgreementQueryDto,
   ) {
-    return this.config.listAgreements(user, centreId, query);
+    return this.config.listAgreements(user, hospitalId, query);
   }
 
-  @Post('centres/:centreId/agreements')
+  @Post('hospitals/:hospitalId/agreements')
   @Permissions('charge_rules.manage')
   createAgreement(
     @CurrentUser() user: AuthUser,
-    @Param('centreId', ParseUUIDPipe) centreId: string,
+    @Param('hospitalId', ParseUUIDPipe) hospitalId: string,
     @Body() dto: CreateAgreementDto,
   ) {
-    return this.config.createAgreement(user, centreId, dto);
+    return this.config.createAgreement(user, hospitalId, dto);
   }
 
   @Patch('agreements/:id')

@@ -17,7 +17,7 @@ import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
 import { parseDate } from '../common/utils/dates';
 import { paged, pagination } from '../common/utils/pagination';
-import { assertCentreAccess } from '../common/utils/scope';
+import { assertHospitalAccess } from '../common/utils/scope';
 
 export class AuditQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -38,7 +38,7 @@ export class AuditQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ example: 'CHARGE_RUN_POSTED' })
   @IsOptional()
@@ -71,14 +71,14 @@ export class AuditController {
 
   @Get()
   @Permissions('audit.read')
-  @ApiOperation({ summary: "List audit events within the caller's centre scope" })
+  @ApiOperation({ summary: "List audit events within the caller's hospital scope" })
   async list(@CurrentUser() user: AuthUser, @Query() query: AuditQueryDto) {
-    if (query.centreId) assertCentreAccess(user, query.centreId);
+    if (query.hospitalId) assertHospitalAccess(user, query.hospitalId);
     const { page, pageSize, skip, take } = pagination(query);
     const { items, total } = await this.audit.list({
       organizationId: user.organizationId,
-      centreIds: user.allCentres ? undefined : user.centreIds,
-      centreId: query.centreId,
+      hospitalIds: user.allHospitals ? undefined : user.hospitalIds,
+      hospitalId: query.hospitalId,
       action: query.action,
       targetType: query.targetType,
       from: query.from ? parseDate(query.from, 'from') : undefined,

@@ -485,7 +485,7 @@ function AdminsTab() {
   return (
     <div className="space-y-5">
       <Notice tone="info" title="Registered super admins">
-        Super admins use a Gmail address, and only they may. They can manage email, branding, approved domains and set up centres. Other accounts are created on the Users screen with an address at an approved domain.
+        Super admins use a Gmail address, and only they may. They can manage email, branding, approved domains and set up hospitals. Other accounts are created on the Users screen with an address at an approved domain.
       </Notice>
       <Card title="Register a super admin">
         <form

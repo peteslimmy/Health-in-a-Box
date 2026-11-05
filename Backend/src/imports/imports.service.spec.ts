@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { allCentresUser, D } from '../testing/fixtures';
+import { allHospitalsUser, D } from '../testing/fixtures';
 import { ImportsService } from './imports.service';
 import { RevenueParserService } from './revenue-parser.service';
 
@@ -17,7 +17,7 @@ jest.mock('./file-extractor', () => ({
   },
 }));
 
-const CENTRE = 'centre-1';
+const HOSPITAL = 'hospital-1';
 const departments = [{ id: 'dep-pharm', code: 'PHARM', name: 'Pharmacy', aliases: [] }];
 const channels = [
   { id: 'ch-cash', code: 'CASH', name: 'Cash', aliases: [] },
@@ -47,11 +47,11 @@ function build(
     },
   };
   const prisma = {
-    centre: {
+    hospital: {
       findFirst: jest.fn().mockResolvedValue({
-        id: CENTRE,
+        id: HOSPITAL,
         status: 'ACTIVE',
-        name: 'Test Centre',
+        name: 'Test Hospital',
         timezone: 'Africa/Lagos',
       }),
     },
@@ -84,9 +84,13 @@ function build(
   return { service, prisma, storage, audit, tx };
 }
 
-const uploadDto = { centreId: CENTRE, periodStart: '2026-09-01', periodEnd: '2026-09-30' } as never;
-const uploader = allCentresUser('uploader');
-const reviewer = allCentresUser('reviewer');
+const uploadDto = {
+  hospitalId: HOSPITAL,
+  periodStart: '2026-09-01',
+  periodEnd: '2026-09-30',
+} as never;
+const uploader = allHospitalsUser('uploader');
+const reviewer = allHospitalsUser('reviewer');
 
 describe('revenue import upload', () => {
   it('stores a content fingerprint and writes the audit event in the same transaction', async () => {
@@ -99,23 +103,23 @@ describe('revenue import upload', () => {
   });
 
   it.each(['DRAFT', 'SUSPENDED', 'ARCHIVED'])(
-    'FR-CEN-009: rejects an upload to a %s centre',
+    'FR-CEN-009: rejects an upload to a %s hospital',
     async (status) => {
       const { service, prisma, storage } = build();
-      prisma.centre.findFirst.mockResolvedValue({
-        id: CENTRE,
+      prisma.hospital.findFirst.mockResolvedValue({
+        id: HOSPITAL,
         status,
-        name: 'Test Centre',
+        name: 'Test Hospital',
         timezone: 'Africa/Lagos',
       });
       await expect(service.upload(uploader, csvFile(GOOD), uploadDto)).rejects.toMatchObject({
-        response: { code: 'CENTRE_NOT_ACTIVE' },
+        response: { code: 'HOSPITAL_NOT_ACTIVE' },
       });
       expect(storage.put).not.toHaveBeenCalled();
     },
   );
 
-  it('blocks a renamed re-send of identical figures for the same centre and period', async () => {
+  it('blocks a renamed re-send of identical figures for the same hospital and period', async () => {
     const existing = {
       id: 'old',
       status: 'COMMITTED',
@@ -200,7 +204,7 @@ describe('revenue import upload', () => {
       }) as never;
     const table = (rows: string[][], period: { start: string; end: string } | null) => ({
       rows: [['S/N', 'Revenue Department', 'Cash', 'POS', 'Total Amount'], ...rows],
-      title: 'TEST CENTRE HOSPITAL',
+      title: 'TEST HOSPITAL HOSPITAL',
       printDate: '2026-10-01',
       period,
       pages: 1,
@@ -219,7 +223,7 @@ describe('revenue import upload', () => {
         ),
       );
       const { service, tx } = build();
-      await service.upload(uploader, pdfFile(), { centreId: CENTRE } as never);
+      await service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never);
       const data = tx.importBatch.create.mock.calls[0][0].data;
       expect(data.status).toBe('READY_TO_COMMIT');
       expect(data.periodStart.toISOString().slice(0, 10)).toBe('2026-09-01');
@@ -240,7 +244,7 @@ describe('revenue import upload', () => {
       const { service } = build();
       await expect(
         service.upload(uploader, pdfFile(), {
-          centreId: CENTRE,
+          hospitalId: HOSPITAL,
           periodStart: '2026-09-02',
           periodEnd: '2026-09-30',
         } as never),
@@ -258,7 +262,7 @@ describe('revenue import upload', () => {
         ),
       );
       const { service, tx } = build();
-      await service.upload(uploader, pdfFile(), { centreId: CENTRE } as never);
+      await service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never);
       const data = tx.importBatch.create.mock.calls[0][0].data;
       expect(data.status).toBe('NEEDS_REVIEW');
       const codes = data.validationJson.errors.map((e: { code: string }) => e.code);
@@ -276,7 +280,7 @@ describe('revenue import upload', () => {
         printDate: '2026-09-15',
       });
       const { service, tx } = build();
-      await service.upload(uploader, pdfFile(), { centreId: CENTRE } as never);
+      await service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never);
       const errors = tx.importBatch.create.mock.calls[0][0].data.validationJson.errors;
       expect(errors.map((e: { code: string }) => e.code)).toContain('PRINTED_BEFORE_PERIOD_END');
     });
@@ -285,7 +289,7 @@ describe('revenue import upload', () => {
       read.mockRejectedValue(new Error('No revenue table was found in the PDF'));
       const { service } = build();
       await expect(
-        service.upload(uploader, pdfFile(), { centreId: CENTRE } as never),
+        service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never),
       ).rejects.toMatchObject({
         response: { code: 'IMPORT_PARSE_FAILED' },
       });
@@ -318,7 +322,7 @@ describe('revenue import upload', () => {
           amountsJson: { CASH: '400.00', POS: '200.00' },
         },
       ]);
-      await service.upload(uploader, pdfFile(), { centreId: CENTRE } as never);
+      await service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never);
       const data = tx.importBatch.create.mock.calls[0][0].data;
       expect(data.status).toBe('READY_TO_COMMIT');
       expect(data.periodStart.toISOString().slice(0, 10)).toBe('2026-09-21');
@@ -357,7 +361,7 @@ describe('revenue import upload', () => {
           sourceFileName: 'sept.pdf',
         },
       ]);
-      await service.upload(uploader, pdfFile(), { centreId: CENTRE } as never);
+      await service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never);
       const data = tx.importBatch.create.mock.calls[0][0].data;
       expect(data.status).toBe('NEEDS_REVIEW');
       const error = data.validationJson.errors.find(
@@ -393,7 +397,7 @@ describe('revenue import upload', () => {
           amountsJson: { CASH: '600.00', POS: '0.00' },
         },
       ]);
-      await service.upload(uploader, pdfFile(), { centreId: CENTRE } as never);
+      await service.upload(uploader, pdfFile(), { hospitalId: HOSPITAL } as never);
       const data = tx.importBatch.create.mock.calls[0][0].data;
       expect(data.status).toBe('NEEDS_REVIEW');
       expect(data.validationJson.errors.map((e: { code: string }) => e.code)).toContain(
@@ -405,13 +409,13 @@ describe('revenue import upload', () => {
       const { service } = build();
       const fake = { buffer: Buffer.from('hello'), size: 5, originalname: 'x.pdf' } as never;
       await expect(
-        service.upload(uploader, fake, { centreId: CENTRE } as never),
+        service.upload(uploader, fake, { hospitalId: HOSPITAL } as never),
       ).rejects.toMatchObject({
         response: { code: 'INVALID_FILE_CONTENT' },
       });
     });
 
-    it('adds missing departments and channels only for a user allowed to edit the centre', async () => {
+    it('adds missing departments and channels only for a user allowed to edit the hospital', async () => {
       read.mockResolvedValue(
         table([['1', 'Brand New Unit', '5.00', '5.00', '10.00']], {
           start: '2026-09-01',
@@ -421,7 +425,10 @@ describe('revenue import upload', () => {
       const { service, prisma } = build();
       prisma.department.findMany.mockResolvedValueOnce([]);
       await expect(
-        service.upload(uploader, pdfFile(), { centreId: CENTRE, createMissing: 'true' } as never),
+        service.upload(uploader, pdfFile(), {
+          hospitalId: HOSPITAL,
+          createMissing: 'true',
+        } as never),
       ).rejects.toMatchObject({ response: { code: 'SETUP_NOT_PERMITTED' } });
     });
   });
@@ -464,7 +471,7 @@ describe('revenue import commit', () => {
     return {
       id: 'batch-1',
       organizationId: 'org-1',
-      centreId: CENTRE,
+      hospitalId: HOSPITAL,
       status: 'READY_TO_COMMIT',
       createdById: 'uploader',
       periodStart: D('2026-09-01'),
@@ -557,7 +564,7 @@ describe('committing a held report with approved variance', () => {
   const held = (overrides: Record<string, unknown> = {}) => ({
     id: 'batch-1',
     organizationId: 'org-1',
-    centreId: CENTRE,
+    hospitalId: HOSPITAL,
     status: 'NEEDS_REVIEW',
     createdById: 'uploader',
     periodStart: D('2026-09-01'),
@@ -583,7 +590,7 @@ describe('committing a held report with approved variance', () => {
     },
     ...overrides,
   });
-  const reason = 'Centre confirmed by phone that the printed total includes a late cheque';
+  const reason = 'Hospital confirmed by phone that the printed total includes a late cheque';
   const withBatch = (batch: unknown) =>
     build({ importBatch: { findFirst: jest.fn().mockResolvedValue(batch) } });
 
@@ -683,13 +690,13 @@ describe('committing a held report with approved variance', () => {
     );
   });
 
-  it('returns the original report when approved twice, and never touches another centre', async () => {
+  it('returns the original report when approved twice, and never touches another hospital', async () => {
     const done = withBatch(held({ status: 'COMMITTED', committedReportId: 'report-9' }));
     await expect(
       done.service.commitWithVariance(reviewer, 'batch-1', { reason }),
     ).resolves.toMatchObject({ reportId: 'report-9', alreadyCommitted: true });
     expect(done.tx.revenueReport.create).not.toHaveBeenCalled();
-    const scoped = { ...reviewer, allCentres: false, centreIds: ['other-centre'] };
+    const scoped = { ...reviewer, allHospitals: false, hospitalIds: ['other-hospital'] };
     await expect(
       withBatch(held()).service.commitWithVariance(scoped, 'batch-1', { reason }),
     ).rejects.toBeDefined();
@@ -707,7 +714,7 @@ describe('what the API reveals and puts in headers', () => {
   it('never returns storage keys or the raw uploaded rows from an import', async () => {
     const findFirst = jest.fn().mockResolvedValue({
       id: 'b1',
-      centreId: CENTRE,
+      hospitalId: HOSPITAL,
       status: 'READY_TO_COMMIT',
       validationJson: { errors: [] },
     });
@@ -716,28 +723,28 @@ describe('what the API reveals and puts in headers', () => {
     expect(findFirst.mock.calls[0][0].omit).toMatchObject({ fileKey: true, rowsJson: true });
   });
 
-  it('builds a download filename from safe characters only, whatever the centre code holds', async () => {
+  it('builds a download filename from safe characters only, whatever the hospital code holds', async () => {
     const { service, prisma } = build();
-    prisma.centre.findFirst.mockResolvedValue({
-      id: CENTRE,
+    prisma.hospital.findFirst.mockResolvedValue({
+      id: HOSPITAL,
       code: 'A/B"\r\nX-Injected: yes',
       departments: [],
       paymentChannels: [],
     });
-    const { fileName } = await service.template(uploader, CENTRE);
+    const { fileName } = await service.template(uploader, HOSPITAL);
     expect(fileName).toMatch(/^revenue-template-[A-Za-z0-9_-]+\.csv$/);
     expect(fileName).not.toMatch(/[\r\n"/\\:]/);
   });
 
   it('neutralises spreadsheet formulas in the template header and rows', async () => {
     const { service, prisma } = build();
-    prisma.centre.findFirst.mockResolvedValue({
-      id: CENTRE,
+    prisma.hospital.findFirst.mockResolvedValue({
+      id: HOSPITAL,
       code: 'C1',
       departments: [{ name: '=HYPERLINK("http://evil.test")' }, { name: '+SUM(A1)' }],
       paymentChannels: [{ name: '@cmd' }],
     });
-    const { content } = await service.template(uploader, CENTRE);
+    const { content } = await service.template(uploader, HOSPITAL);
     expect(content).not.toMatch(/(^|,|\n)[=+@-]/);
     expect(content).toContain("'=HYPERLINK");
   });
@@ -748,7 +755,7 @@ describe('original file download', () => {
     const { service, prisma, storage, audit } = build();
     (prisma.importBatch as Record<string, jest.Mock>).findFirst.mockResolvedValue({
       id: 'b1',
-      centreId: CENTRE,
+      hospitalId: HOSPITAL,
       fileKey: 'k1',
       fileName: 'uath revenue (sept).pdf',
     });
@@ -764,15 +771,15 @@ describe('original file download', () => {
     });
   });
 
-  it('refuses a batch from another centre the caller cannot see', async () => {
+  it('refuses a batch from another hospital the caller cannot see', async () => {
     const { service, prisma } = build();
     (prisma.importBatch as Record<string, jest.Mock>).findFirst.mockResolvedValue({
       id: 'b2',
-      centreId: 'other-centre',
+      hospitalId: 'other-hospital',
       fileKey: 'k2',
       fileName: 'x.csv',
     });
-    const scoped = { ...allCentresUser('s'), allCentres: false, centreIds: [CENTRE] };
+    const scoped = { ...allHospitalsUser('s'), allHospitals: false, hospitalIds: [HOSPITAL] };
     await expect(service.downloadSource(scoped, 'b2')).rejects.toMatchObject({ status: 404 });
   });
 });

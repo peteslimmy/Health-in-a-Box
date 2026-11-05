@@ -16,7 +16,7 @@ describe('report fingerprint (duplicate detection)', () => {
     expect(fingerprintReport('c1', '2026-09-01', '2026-09-30', shuffled)).toBe(base());
   });
 
-  it('changes when any figure, centre or period changes', () => {
+  it('changes when any figure, hospital or period changes', () => {
     const changedAmount = [{ ...lines[0], amounts: { CASH: '601.00', POS: '399.00' } }, lines[1]];
     expect(fingerprintReport('c1', '2026-09-01', '2026-09-30', changedAmount)).not.toBe(base());
     expect(fingerprintReport('c2', '2026-09-01', '2026-09-30', lines)).not.toBe(base());

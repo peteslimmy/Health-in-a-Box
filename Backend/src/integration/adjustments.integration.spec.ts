@@ -13,7 +13,7 @@ import { AdjustmentsService } from '../adjustments/adjustments.service';
 import { OpeningBalancesService } from '../adjustments/opening-balances.service';
 import { AuditService } from '../common/services/audit.service';
 import { AuthUser } from '../common/types/auth-user';
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 
 const url = process.env.TEST_DATABASE_URL;
 const safe = !!url && /\/[^/?]*(test|scratch)[^/?]*(\?|$)/i.test(url);
@@ -24,7 +24,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
   let adjustments: AdjustmentsService;
   let openings: OpeningBalancesService;
   let orgId: string;
-  let centreId: string;
+  let hospitalId: string;
   let maker: AuthUser;
   let checker: AuthUser;
   const suffix = randomUUID().slice(0, 8);
@@ -40,7 +40,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
         fullName: label,
       },
     });
-    return { ...allCentresUser(user.id), organizationId: orgId };
+    return { ...allHospitalsUser(user.id), organizationId: orgId };
   }
 
   beforeAll(async () => {
@@ -49,10 +49,10 @@ maybe('adjustments, disputes and opening balances against a real database', () =
       data: { name: `A ${suffix}`, slug: `a-${suffix}` },
     });
     orgId = org.id;
-    const centre = await prisma.centre.create({
-      data: { organizationId: orgId, code: `AC-${suffix}`, name: 'Adj Centre', status: 'ACTIVE' },
+    const hospital = await prisma.hospital.create({
+      data: { organizationId: orgId, code: `AC-${suffix}`, name: 'Adj Hospital', status: 'ACTIVE' },
     });
-    centreId = centre.id;
+    hospitalId = hospital.id;
     maker = await makeUser('maker');
     checker = await makeUser('checker');
     const audit = new AuditService(prisma as never);
@@ -68,7 +68,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
     const r = await prisma.receivable.create({
       data: {
         organizationId: orgId,
-        centreId,
+        hospitalId,
         reference: ref('RCV'),
         description: 'fixture',
         originalAmount: amount,
@@ -80,7 +80,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
     await prisma.ledgerEntry.create({
       data: {
         organizationId: orgId,
-        centreId,
+        hospitalId,
         receivableId: r.id,
         type: 'CHARGE',
         debit: amount,
@@ -93,7 +93,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
       await prisma.ledgerEntry.create({
         data: {
           organizationId: orgId,
-          centreId,
+          hospitalId,
           receivableId: r.id,
           type: 'PAYMENT_ALLOCATION',
           debit: 0,
@@ -197,7 +197,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
     const d = await adjustments.raiseDispute(maker, {
       receivableId: r.id,
       amount: '100.00',
-      reason: 'The centre says the department was closed',
+      reason: 'The hospital says the department was closed',
     });
     expect((await prisma.receivable.findUniqueOrThrow({ where: { id: r.id } })).status).toBe(
       'DISPUTED',
@@ -243,7 +243,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
 
   it('an opening balance becomes one receivable with a matching ledger entry, only after approval', async () => {
     const proposal = await openings.create(maker, {
-      centreId,
+      hospitalId,
       asAt: '2026-01-31',
       amount: '12345.67',
       dueDate: '2026-03-31',
@@ -259,7 +259,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
     expect(await ledgerBalance(receivableId)).toBe(12345.67);
     await expect(
       openings.create(maker, {
-        centreId,
+        hospitalId,
         asAt: '2026-01-31',
         amount: '1.00',
         dueDate: '2026-03-31',
@@ -269,18 +269,18 @@ maybe('adjustments, disputes and opening balances against a real database', () =
   });
 
   it('an opening balance cannot overlap periods already charged on the platform', async () => {
-    const other = await prisma.centre.create({
+    const other = await prisma.hospital.create({
       data: {
         organizationId: orgId,
         code: `OV-${suffix}`,
-        name: 'Overlap Centre',
+        name: 'Overlap Hospital',
         status: 'ACTIVE',
       },
     });
     await prisma.chargeRun.create({
       data: {
         organizationId: orgId,
-        centreId: other.id,
+        hospitalId: other.id,
         periodStart: new Date('2026-02-01T00:00:00Z'),
         periodEnd: new Date('2026-02-28T00:00:00Z'),
         asOf: new Date('2026-03-01T00:00:00Z'),
@@ -292,7 +292,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
     });
     await expect(
       openings.create(maker, {
-        centreId: other.id,
+        hospitalId: other.id,
         asAt: '2026-02-15',
         amount: '500.00',
         dueDate: '2026-04-30',
@@ -301,7 +301,7 @@ maybe('adjustments, disputes and opening balances against a real database', () =
     ).rejects.toMatchObject({ response: { code: 'OPENING_OVERLAPS_HISTORY' } });
     await expect(
       openings.create(maker, {
-        centreId: other.id,
+        hospitalId: other.id,
         asAt: '2026-01-31',
         amount: '500.00',
         dueDate: '2026-04-30',

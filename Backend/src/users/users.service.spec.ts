@@ -1,4 +1,4 @@
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 import { UsersService } from './users.service';
 
 const role = (id: string, code: string, permissions: string[], isSystem = false) => ({
@@ -15,7 +15,7 @@ function build(roles: ReturnType<typeof role>[] = [], targetPermissions: string[
     fullName: 'Target',
     isActive: true,
     roleAssignments: targetPermissions.length
-      ? [{ role: role('t-role', 'TARGET_ROLE', targetPermissions), centre: null }]
+      ? [{ role: role('t-role', 'TARGET_ROLE', targetPermissions), hospital: null }]
       : [],
   };
   const prisma = {
@@ -34,7 +34,7 @@ function build(roles: ReturnType<typeof role>[] = [], targetPermissions: string[
     userRoleAssignment: { findMany: jest.fn().mockResolvedValue(targetUser.roleAssignments) },
     refreshSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     mfaRecoveryCode: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    centre: { count: jest.fn().mockResolvedValue(0) },
+    hospital: { count: jest.fn().mockResolvedValue(0) },
     permission: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(async (arg: unknown) =>
       typeof arg === 'function' ? (arg as (t: unknown) => unknown)({}) : Promise.all(arg as []),
@@ -53,7 +53,7 @@ function build(roles: ReturnType<typeof role>[] = [], targetPermissions: string[
 const assignments = (...roleIds: string[]) => roleIds.map((roleId) => ({ roleId }));
 
 describe('user and role administration controls', () => {
-  const admin = allCentresUser('admin', [
+  const admin = allHospitalsUser('admin', [
     'users.manage',
     'roles.manage',
     'imports.manage',
@@ -118,7 +118,7 @@ describe('user and role administration controls', () => {
 });
 
 describe('administering other users (no takeover of a more privileged account)', () => {
-  const lowAdmin = allCentresUser('low-admin', ['users.manage', 'users.read']);
+  const lowAdmin = allHospitalsUser('low-admin', ['users.manage', 'users.read']);
 
   it('cannot reset the password of a user who holds permissions the administrator lacks', async () => {
     const { service, prisma } = build([], ['users.manage', 'payments.post', 'roles.manage']);
@@ -155,17 +155,17 @@ describe('administering other users (no takeover of a more privileged account)',
   });
 });
 
-describe('centre-scoped user administrators', () => {
+describe('hospital-scoped user administrators', () => {
   const scopedAdmin = {
-    ...allCentresUser('scoped-admin', ['users.manage', 'users.read', 'imports.read']),
-    allCentres: false,
-    centreIds: ['centre-a'],
+    ...allHospitalsUser('scoped-admin', ['users.manage', 'users.read', 'imports.read']),
+    allHospitals: false,
+    hospitalIds: ['hospital-a'],
   };
   const lowRole = [role('r1', 'LOW', ['imports.read'])];
   const withScopes = (scopes: Array<string | null>) => {
     const ctx = build(lowRole, ['imports.read']);
-    // the number of centres found equals the number asked for, so only the scope rule can reject
-    ctx.prisma.centre.count.mockImplementation(
+    // the number of hospitals found equals the number asked for, so only the scope rule can reject
+    ctx.prisma.hospital.count.mockImplementation(
       async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.length,
     );
     const tx = {
@@ -187,35 +187,39 @@ describe('centre-scoped user administrators', () => {
       typeof arg === 'function' ? (arg as (t: unknown) => unknown)(tx) : Promise.all(arg as []),
     );
     ctx.prisma.userRoleAssignment.findMany.mockResolvedValue(
-      scopes.map((centreId) => ({ centreId, role: role('t', 'T', ['imports.read']) })) as never,
+      scopes.map((hospitalId) => ({ hospitalId, role: role('t', 'T', ['imports.read']) })) as never,
     );
     return ctx;
   };
 
-  it('cannot give anyone access to a centre outside their own scope', async () => {
-    const { service } = withScopes(['centre-a']);
+  it('cannot give anyone access to a hospital outside their own scope', async () => {
+    const { service } = withScopes(['hospital-a']);
     await expect(
-      service.replaceAssignments(scopedAdmin, 'target', [{ roleId: 'r1', centreId: 'centre-b' }]),
-    ).rejects.toMatchObject({ response: { code: 'CENTRE_SCOPE_EXCEEDED' } });
+      service.replaceAssignments(scopedAdmin, 'target', [
+        { roleId: 'r1', hospitalId: 'hospital-b' },
+      ]),
+    ).rejects.toMatchObject({ response: { code: 'HOSPITAL_SCOPE_EXCEEDED' } });
   });
 
-  it('cannot give anyone all-centres access', async () => {
-    const { service } = withScopes(['centre-a']);
+  it('cannot give anyone all-hospitals access', async () => {
+    const { service } = withScopes(['hospital-a']);
     await expect(
       service.replaceAssignments(scopedAdmin, 'target', [{ roleId: 'r1' }]),
-    ).rejects.toMatchObject({ response: { code: 'CENTRE_SCOPE_EXCEEDED' } });
+    ).rejects.toMatchObject({ response: { code: 'HOSPITAL_SCOPE_EXCEEDED' } });
   });
 
-  it('can assign a role for a centre inside their own scope', async () => {
-    const { service } = withScopes(['centre-a']);
+  it('can assign a role for a hospital inside their own scope', async () => {
+    const { service } = withScopes(['hospital-a']);
     await expect(
-      service.replaceAssignments(scopedAdmin, 'target', [{ roleId: 'r1', centreId: 'centre-a' }]),
+      service.replaceAssignments(scopedAdmin, 'target', [
+        { roleId: 'r1', hospitalId: 'hospital-a' },
+      ]),
     ).resolves.toBeDefined();
   });
 
   it.each([
-    ['an all-centres user', [null]],
-    ['a user who also works in another centre', ['centre-a', 'centre-b']],
+    ['an all-hospitals user', [null]],
+    ['a user who also works in another hospital', ['hospital-a', 'hospital-b']],
   ])(
     "cannot administer %s (their access would be changed beyond the admin's scope)",
     async (_label, scopes) => {
@@ -229,7 +233,7 @@ describe('centre-scoped user administrators', () => {
 });
 
 describe('resetting a lost authenticator', () => {
-  const lowAdmin = allCentresUser('low-admin', ['users.manage', 'users.read']);
+  const lowAdmin = allHospitalsUser('low-admin', ['users.manage', 'users.read']);
 
   it('clears the factor and recovery codes, ends every session, and is audited', async () => {
     const { service, prisma, audit } = build([], ['users.read']);
@@ -257,7 +261,7 @@ describe('resetting a lost authenticator', () => {
 });
 
 describe('which email addresses an account may have', () => {
-  const superAdmin = allCentresUser('owner', ['users.manage', 'users.read', 'imports.read']);
+  const superAdmin = allHospitalsUser('owner', ['users.manage', 'users.read', 'imports.read']);
   const create = jest.fn(async ({ data }: { data: { email: string } }) => ({
     id: 'new',
     email: data.email,
@@ -284,12 +288,12 @@ describe('which email addresses an account may have', () => {
     create.mockClear();
     return ctx;
   }
-  const body = (email: string, roleId: string, centreId?: string) =>
+  const body = (email: string, roleId: string, hospitalId?: string) =>
     ({
       email,
       fullName: 'Name',
       password: 'Str0ngPassw0rd',
-      assignments: [{ roleId, ...(centreId && { centreId }) }],
+      assignments: [{ roleId, ...(hospitalId && { hospitalId }) }],
     }) as never;
 
   it('checks a new account against the policy, as a super admin when it has that role', async () => {
@@ -311,13 +315,13 @@ describe('which email addresses an account may have', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('keeps the super admin role to all centres', async () => {
+  it('keeps the super admin role to all hospitals', async () => {
     const { service, prisma } = withRoles();
-    prisma.centre.count = jest.fn().mockResolvedValue(1) as never;
+    prisma.hospital.count = jest.fn().mockResolvedValue(1) as never;
     await expect(
-      service.create(superAdmin, body('owner@gmail.com', 'r-super', 'centre-1')),
+      service.create(superAdmin, body('owner@gmail.com', 'r-super', 'hospital-1')),
     ).rejects.toMatchObject({
-      response: { code: 'SUPER_ADMIN_ALL_CENTRES' },
+      response: { code: 'SUPER_ADMIN_ALL_HOSPITALS' },
     });
   });
 
@@ -343,7 +347,7 @@ describe('which email addresses an account may have', () => {
       email: 'sole@gmail.com',
       fullName: 'Sole',
       isActive: true,
-      roleAssignments: [{ role: role('r-super', 'SUPER_ADMIN', []), centre: null }],
+      roleAssignments: [{ role: role('r-super', 'SUPER_ADMIN', []), hospital: null }],
     });
     (prisma.user as Record<string, unknown>).count = jest.fn().mockResolvedValue(0);
     await expect(

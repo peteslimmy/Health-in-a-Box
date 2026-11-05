@@ -21,13 +21,13 @@ import {
   Th,
 } from '../components/ui';
 import { api } from '../lib/api';
-import { centreLabel, formatDate } from '../lib/format';
+import { hospitalLabel, formatDate } from '../lib/format';
 import { can } from '../lib/permissions';
-import type { Agreement, CentreDetail, ChargeRule, Department, Page } from '../lib/types';
+import type { Agreement, HospitalDetail, ChargeRule, Department, Page } from '../lib/types';
 
 type Kind = 'departments' | 'channels';
 
-function CodeNameTable({ kind, items, canEdit, centreId }: { kind: Kind; items: Department[]; canEdit: boolean; centreId: string }) {
+function CodeNameTable({ kind, items, canEdit, hospitalId }: { kind: Kind; items: Department[]; canEdit: boolean; hospitalId: string }) {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ code: '', name: '', aliases: '' });
@@ -35,7 +35,7 @@ function CodeNameTable({ kind, items, canEdit, centreId }: { kind: Kind; items: 
 
   const add = useMutation({
     mutationFn: () =>
-      api(`/centres/${centreId}/${kind}`, {
+      api(`/hospitals/${hospitalId}/${kind}`, {
         method: 'POST',
         body: {
           code: form.code.trim(),
@@ -47,7 +47,7 @@ function CodeNameTable({ kind, items, canEdit, centreId }: { kind: Kind; items: 
         },
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['centre', centreId] });
+      void queryClient.invalidateQueries({ queryKey: ['hospital', hospitalId] });
       setAdding(false);
       setForm({ code: '', name: '', aliases: '' });
     },
@@ -55,7 +55,7 @@ function CodeNameTable({ kind, items, canEdit, centreId }: { kind: Kind; items: 
 
   return (
     <Card
-      title={kind === 'departments' ? 'Departments (revenue services)' : 'Payment channels (how the centre collected revenue)'}
+      title={kind === 'departments' ? 'Departments (revenue services)' : 'Payment channels (how the hospital collected revenue)'}
       actions={
         canEdit && (
           <Button variant="secondary" onClick={() => setAdding(true)}>
@@ -122,7 +122,7 @@ function CodeNameTable({ kind, items, canEdit, centreId }: { kind: Kind; items: 
   );
 }
 
-function RulesPanel({ agreement, centre, canManage }: { agreement: Agreement; centre: CentreDetail; canManage: boolean }) {
+function RulesPanel({ agreement, hospital, canManage }: { agreement: Agreement; hospital: HospitalDetail; canManage: boolean }) {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({
@@ -222,7 +222,7 @@ function RulesPanel({ agreement, centre, canManage }: { agreement: Agreement; ce
                 {(id) => (
                   <Select id={id} value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value })}>
                     <option value="">Any department</option>
-                    {centre.departments.map((department) => (
+                    {hospital.departments.map((department) => (
                       <option key={department.id} value={department.id}>
                         {department.name}
                       </option>
@@ -234,7 +234,7 @@ function RulesPanel({ agreement, centre, canManage }: { agreement: Agreement; ce
                 {(id) => (
                   <Select id={id} value={form.paymentChannelId} onChange={(event) => setForm({ ...form, paymentChannelId: event.target.value })}>
                     <option value="">Any channel</option>
-                    {centre.paymentChannels.map((channel) => (
+                    {hospital.paymentChannels.map((channel) => (
                       <option key={channel.id} value={channel.id}>
                         {channel.name}
                       </option>
@@ -288,7 +288,7 @@ function RulesPanel({ agreement, centre, canManage }: { agreement: Agreement; ce
               </Field>
             </div>
             <Notice tone="neutral">
-              The most specific rule wins: department + channel, then department, then channel, then the centre default. Two active rules for the same scope
+              The most specific rule wins: department + channel, then department, then channel, then the hospital default. Two active rules for the same scope
               cannot overlap.
             </Notice>
             <ErrorNotice error={add.error} />
@@ -307,25 +307,25 @@ function RulesPanel({ agreement, centre, canManage }: { agreement: Agreement; ce
   );
 }
 
-export function CentreDetailPage() {
+export function HospitalDetailPage() {
   const { id = '' } = useParams();
   const user = useUser();
   const queryClient = useQueryClient();
-  const centre = useQuery({ queryKey: ['centre', id], queryFn: () => api<CentreDetail>(`/centres/${id}`) });
+  const hospital = useQuery({ queryKey: ['hospital', id], queryFn: () => api<HospitalDetail>(`/hospitals/${id}`) });
   const [selectedAgreement, setSelectedAgreement] = useState<string>('');
   const [addingAgreement, setAddingAgreement] = useState(false);
   const [agreementForm, setAgreementForm] = useState({ name: '', effectiveFrom: '', effectiveTo: '' });
 
   const setStatus = useMutation({
-    mutationFn: (status: string) => api(`/centres/${id}`, { method: 'PATCH', body: { status } }),
+    mutationFn: (status: string) => api(`/hospitals/${id}`, { method: 'PATCH', body: { status } }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['centre', id] });
-      void queryClient.invalidateQueries({ queryKey: ['centres'] });
+      void queryClient.invalidateQueries({ queryKey: ['hospital', id] });
+      void queryClient.invalidateQueries({ queryKey: ['hospitals'] });
     },
   });
   const addAgreement = useMutation({
     mutationFn: () =>
-      api(`/centres/${id}/agreements`, {
+      api(`/hospitals/${id}/agreements`, {
         method: 'POST',
         body: {
           name: agreementForm.name.trim(),
@@ -334,15 +334,15 @@ export function CentreDetailPage() {
         },
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['centre', id] });
+      void queryClient.invalidateQueries({ queryKey: ['hospital', id] });
       setAddingAgreement(false);
     },
   });
 
-  if (centre.isLoading) return <Loading />;
-  if (centre.error || !centre.data) return <ErrorNotice error={centre.error} />;
-  const c = centre.data;
-  const canUpdate = can(user, 'centres.update');
+  if (hospital.isLoading) return <Loading />;
+  if (hospital.error || !hospital.data) return <ErrorNotice error={hospital.error} />;
+  const c = hospital.data;
+  const canUpdate = can(user, 'hospitals.update');
   const canManageRules = can(user, 'charge_rules.manage');
   const agreement = c.agreements.find((item) => item.id === (selectedAgreement || c.agreements[0]?.id));
   const readiness: string[] = [];
@@ -353,7 +353,7 @@ export function CentreDetailPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={centreLabel(c)}
+        title={hospitalLabel(c)}
         subtitle={
           <>
             <StatusBadge status={c.status} /> {c.address}
@@ -378,7 +378,7 @@ export function CentreDetailPage() {
       />
       <ErrorNotice error={setStatus.error} />
       {c.status !== 'ACTIVE' && (
-        <Notice tone="warn" title={`This centre is ${c.status.toLowerCase()}`}>
+        <Notice tone="warn" title={`This hospital is ${c.status.toLowerCase()}`}>
           Revenue reports, charge runs and receipts cannot be created for it until it is active.
           {readiness.length > 0 && (
             <ul className="mt-1 list-disc pl-5">
@@ -401,19 +401,19 @@ export function CentreDetailPage() {
           ]}
         />
         <p className="mt-3 text-sm">
-          <Link className="text-brand-700 hover:underline" to={`/receivables?centreId=${c.id}`}>
+          <Link className="text-brand-700 hover:underline" to={`/receivables?hospitalId=${c.id}`}>
             View receivables
           </Link>{' '}
           ·{' '}
-          <Link className="text-brand-700 hover:underline" to={`/payments?centreId=${c.id}`}>
+          <Link className="text-brand-700 hover:underline" to={`/payments?hospitalId=${c.id}`}>
             View payments
           </Link>
         </p>
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <CodeNameTable kind="departments" items={c.departments} canEdit={canUpdate} centreId={c.id} />
-        <CodeNameTable kind="channels" items={c.paymentChannels} canEdit={canUpdate} centreId={c.id} />
+        <CodeNameTable kind="departments" items={c.departments} canEdit={canUpdate} hospitalId={c.id} />
+        <CodeNameTable kind="channels" items={c.paymentChannels} canEdit={canUpdate} hospitalId={c.id} />
       </div>
 
       <Card
@@ -443,7 +443,7 @@ export function CentreDetailPage() {
                 )}
               </Field>
             </div>
-            {agreement && <RulesPanel key={agreement.id} agreement={agreement} centre={c} canManage={canManageRules} />}
+            {agreement && <RulesPanel key={agreement.id} agreement={agreement} hospital={c} canManage={canManageRules} />}
           </>
         )}
         {addingAgreement && (

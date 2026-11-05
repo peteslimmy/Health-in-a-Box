@@ -31,7 +31,7 @@ export type ParseResult = {
   grandTotal: string;
   channelTotal: string;
   rows: Array<Record<string, unknown>>;
-  /** Names in the file that the centre does not have yet (so they can be added after review). */
+  /** Names in the file that the hospital does not have yet (so they can be added after review). */
   unmatched: { departments: string[]; channels: string[] };
 };
 
@@ -330,7 +330,7 @@ export class RevenueParserService {
           row: rowNumber,
           field: 'department',
           code: 'UNKNOWN_DEPARTMENT',
-          message: `Department "${rawDepartment}" is not configured for this centre`,
+          message: `Department "${rawDepartment}" is not configured for this hospital`,
         });
         continue;
       }

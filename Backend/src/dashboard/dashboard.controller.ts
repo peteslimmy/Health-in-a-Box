@@ -12,7 +12,7 @@ export class DashboardQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({
     example: '2026-10-01',
@@ -32,7 +32,7 @@ export class TrendQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ example: 12, description: 'Number of calendar months to show (3 to 24)' })
   @IsOptional()
@@ -60,7 +60,7 @@ export class ReportingStatusQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 }
 
 @ApiTags('dashboard')
@@ -95,7 +95,7 @@ export class DashboardController {
 
   @Get('reporting-status')
   @Permissions('dashboard.read')
-  @ApiOperation({ summary: 'When each active centre last reported, and which are late' })
+  @ApiOperation({ summary: 'When each active hospital last reported, and which are late' })
   reportingStatus(@CurrentUser() user: AuthUser, @Query() query: ReportingStatusQueryDto) {
     return this.dashboard.reportingStatus(user, query);
   }

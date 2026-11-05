@@ -14,7 +14,7 @@ import { AuthUser } from '../common/types/auth-user';
 import { dateInTimeZone } from '../common/utils/dates';
 import { PaymentsService } from '../payments/payments.service';
 import { ReceivablesService } from '../receivables/receivables.service';
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 
 const url = process.env.TEST_DATABASE_URL;
 const safe = !!url && /\/[^/?]*(test|scratch)[^/?]*(\?|$)/i.test(url);
@@ -25,7 +25,7 @@ maybe('receipts and allocation against a real database', () => {
   let payments: PaymentsService;
   let receivables: ReceivablesService;
   let orgId: string;
-  let centreId: string;
+  let hospitalId: string;
   let maker: AuthUser;
   let checker: AuthUser;
   let allocator: AuthUser;
@@ -44,7 +44,7 @@ maybe('receipts and allocation against a real database', () => {
         fullName: label,
       },
     });
-    return { ...allCentresUser(user.id), organizationId: orgId };
+    return { ...allHospitalsUser(user.id), organizationId: orgId };
   }
 
   beforeAll(async () => {
@@ -53,10 +53,10 @@ maybe('receipts and allocation against a real database', () => {
       data: { name: `P ${suffix}`, slug: `p-${suffix}` },
     });
     orgId = org.id;
-    const centre = await prisma.centre.create({
-      data: { organizationId: orgId, code: `PC-${suffix}`, name: 'Pay Centre', status: 'ACTIVE' },
+    const hospital = await prisma.hospital.create({
+      data: { organizationId: orgId, code: `PC-${suffix}`, name: 'Pay Hospital', status: 'ACTIVE' },
     });
-    centreId = centre.id;
+    hospitalId = hospital.id;
     maker = await makeUser('maker');
     checker = await makeUser('checker');
     allocator = await makeUser('allocator');
@@ -71,11 +71,11 @@ maybe('receipts and allocation against a real database', () => {
   });
 
   /** A posted charge: one receivable with its CHARGE ledger debit. */
-  async function receivable(amount: number, dueDate = '2030-01-31', inCentre = centreId) {
+  async function receivable(amount: number, dueDate = '2030-01-31', inHospital = hospitalId) {
     const r = await prisma.receivable.create({
       data: {
         organizationId: orgId,
-        centreId: inCentre,
+        hospitalId: inHospital,
         reference: ref('RCV'),
         description: 'fixture',
         originalAmount: amount,
@@ -86,7 +86,7 @@ maybe('receipts and allocation against a real database', () => {
     await prisma.ledgerEntry.create({
       data: {
         organizationId: orgId,
-        centreId: inCentre,
+        hospitalId: inHospital,
         receivableId: r.id,
         type: 'CHARGE',
         debit: amount,
@@ -99,9 +99,9 @@ maybe('receipts and allocation against a real database', () => {
   }
 
   /** A receipt taken through the whole approval lifecycle to POSTED. */
-  async function postedPayment(amount: string, inCentre = centreId) {
+  async function postedPayment(amount: string, inHospital = hospitalId) {
     const created = await payments.create(maker, {
-      centreId: inCentre,
+      hospitalId: inHospital,
       receiptDate: today(),
       amount,
       method: 'bank_transfer',
@@ -131,7 +131,7 @@ maybe('receipts and allocation against a real database', () => {
 
     it('lets the database itself refuse a self-approved or self-posted receipt', async () => {
       const created = await payments.create(maker, {
-        centreId,
+        hospitalId,
         receiptDate: today(),
         amount: '10.00',
         method: 'cash',
@@ -148,7 +148,7 @@ maybe('receipts and allocation against a real database', () => {
 
     it('refuses cash to be allocated before the receipt is posted (database check)', async () => {
       const created = await payments.create(maker, {
-        centreId,
+        hospitalId,
         receiptDate: today(),
         amount: '10.00',
         method: 'cash',
@@ -163,7 +163,7 @@ maybe('receipts and allocation against a real database', () => {
     it('FR-AR-004: blocks a repeated reference, case-insensitively, and frees it on rejection', async () => {
       const reference = ref('Dup');
       const first = await payments.create(maker, {
-        centreId,
+        hospitalId,
         receiptDate: today(),
         amount: '55.00',
         method: 'cash',
@@ -172,7 +172,7 @@ maybe('receipts and allocation against a real database', () => {
       });
       await expect(
         payments.create(maker, {
-          centreId,
+          hospitalId,
           receiptDate: today(),
           amount: '66.00',
           method: 'cash',
@@ -185,7 +185,7 @@ maybe('receipts and allocation against a real database', () => {
         prisma.payment.create({
           data: {
             organizationId: orgId,
-            centreId,
+            hospitalId,
             receiptDate: new Date(),
             amount: 1,
             unallocatedAmount: 1,
@@ -199,7 +199,7 @@ maybe('receipts and allocation against a real database', () => {
       await payments.reject(checker, first.id, 'wrong remitter');
       await expect(
         payments.create(maker, {
-          centreId,
+          hospitalId,
           receiptDate: today(),
           amount: '55.00',
           method: 'cash',
@@ -352,9 +352,9 @@ maybe('receipts and allocation against a real database', () => {
       ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_KEY_REUSED' } });
     });
 
-    it("refuses allocation of a receipt that is not posted, or to another centre's receivable", async () => {
+    it("refuses allocation of a receipt that is not posted, or to another hospital's receivable", async () => {
       const draft = await payments.create(maker, {
-        centreId,
+        hospitalId,
         receiptDate: today(),
         amount: '10.00',
         method: 'cash',
@@ -368,7 +368,7 @@ maybe('receipts and allocation against a real database', () => {
         }),
       ).rejects.toMatchObject({ response: { code: 'INVALID_PAYMENT_STATUS' } });
 
-      const other = await prisma.centre.create({
+      const other = await prisma.hospital.create({
         data: {
           organizationId: orgId,
           code: `OC-${suffix}-${++seq}`,
@@ -379,9 +379,9 @@ maybe('receipts and allocation against a real database', () => {
       const foreign = await prisma.receivable.create({
         data: {
           organizationId: orgId,
-          centreId: other.id,
+          hospitalId: other.id,
           reference: ref('FOREIGN'),
-          description: 'other centre',
+          description: 'other hospital',
           originalAmount: 100,
           balance: 100,
           dueDate: new Date('2030-01-31T00:00:00Z'),
@@ -396,8 +396,8 @@ maybe('receipts and allocation against a real database', () => {
     });
 
     it('suggests oldest-due first in the preview without committing anything', async () => {
-      // a dedicated centre, so receivables left open by other tests do not fill the suggestion
-      const own = await prisma.centre.create({
+      // a dedicated hospital, so receivables left open by other tests do not fill the suggestion
+      const own = await prisma.hospital.create({
         data: {
           organizationId: orgId,
           code: 'SC-' + suffix + '-' + ++seq,
@@ -481,7 +481,7 @@ maybe('receipts and allocation against a real database', () => {
   describe('worklists and ageing', () => {
     it('lists posted receipts with cash left as unallocated, separate from receivables', async () => {
       const id = await postedPayment('77.00');
-      const list = await payments.unallocated(allocator, { centreId, pageSize: 100 });
+      const list = await payments.unallocated(allocator, { hospitalId, pageSize: 100 });
       expect(list.items.map((p) => p.id)).toContain(id);
     });
 
@@ -491,7 +491,7 @@ maybe('receipts and allocation against a real database', () => {
       expect(onDueDate.ageingBucket).toBe('NOT_YET_DUE');
       const lateBy31 = await receivables.get(allocator, r.id, '2030-07-31');
       expect(lateBy31.ageingBucket).toBe('DAYS_31_60');
-      const summary = await receivables.ageing(allocator, { centreId, asAt: '2030-07-31' });
+      const summary = await receivables.ageing(allocator, { hospitalId, asAt: '2030-07-31' });
       expect(Number(summary.total.DAYS_31_60)).toBeGreaterThanOrEqual(250);
     });
   });

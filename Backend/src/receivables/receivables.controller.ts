@@ -22,7 +22,7 @@ export class ReceivablesController {
   // Declared before ':id' so "ageing" is never captured as an id.
   @Get('ageing')
   @Permissions('receivables.read')
-  @ApiOperation({ summary: 'Outstanding balances per ageing bucket, per centre and in total' })
+  @ApiOperation({ summary: 'Outstanding balances per ageing bucket, per hospital and in total' })
   ageing(@CurrentUser() user: AuthUser, @Query() query: AgeingQueryDto) {
     return this.receivables.ageing(user, query);
   }

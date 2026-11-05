@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { CentreSelect } from '../components/CentreSelect';
+import { HospitalSelect } from '../components/HospitalSelect';
 import { Button, Card, EmptyState, ErrorNotice, Field, Input, Loading, Notice, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui';
 import { api } from '../lib/api';
 import { formatDate, formatMoney, titleCase } from '../lib/format';
@@ -39,7 +39,7 @@ export function ReportViewPage() {
   const { id = '' } = useParams();
   // Links from the dashboard open a report already filtered to the figure that was clicked.
   const [params] = useSearchParams();
-  const [centreId, setCentreId] = useState(params.get('centreId') ?? '');
+  const [hospitalId, setHospitalId] = useState(params.get('hospitalId') ?? '');
   const [from, setFrom] = useState(params.get('from') ?? '');
   const [to, setTo] = useState(params.get('to') ?? '');
   const [status, setStatus] = useState(params.get('status') ?? '');
@@ -48,11 +48,11 @@ export function ReportViewPage() {
   const catalogue = useQuery({ queryKey: ['reports'], queryFn: () => api<ReportSummary[]>('/reports') });
   const summary = catalogue.data?.find((report) => report.id === id);
 
-  const filters = { centreId, from, to, status };
+  const filters = { hospitalId, from, to, status };
   const result = useQuery({
     queryKey: ['report', id, filters, page],
     queryFn: () => api<ReportResult>(`/reports/${id}`, { query: { ...filters, page, pageSize: 50 } }),
-    enabled: !!summary && (!summary.requiresCentre || !!centreId),
+    enabled: !!summary && (!summary.requiresHospital || !!hospitalId),
   });
 
   const exportFile = useMutation({
@@ -117,10 +117,10 @@ export function ReportViewPage() {
       {summary.filters.length > 0 && (
         <Card className="print:hidden">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {summary.filters.includes('centreId') && (
-              <Field label="Centre">
+            {summary.filters.includes('hospitalId') && (
+              <Field label="Hospital">
                 {(fieldId) => (
-                  <CentreSelect id={fieldId} allowAll={!summary.requiresCentre} value={centreId} onChange={(value) => reset(() => setCentreId(value))} />
+                  <HospitalSelect id={fieldId} allowAll={!summary.requiresHospital} value={hospitalId} onChange={(value) => reset(() => setHospitalId(value))} />
                 )}
               </Field>
             )}
@@ -156,7 +156,7 @@ export function ReportViewPage() {
         </Card>
       )}
 
-      {summary.requiresCentre && !centreId && <Notice tone="info">Choose a centre to produce this report.</Notice>}
+      {summary.requiresHospital && !hospitalId && <Notice tone="info">Choose a hospital to produce this report.</Notice>}
       {result.isLoading && <Loading />}
       <ErrorNotice error={result.error} />
 
@@ -173,7 +173,7 @@ export function ReportViewPage() {
           )}
           <Card>
             {data.items.length === 0 ? (
-              <EmptyState title="No records match these filters" hint="Widen the dates or choose all centres." />
+              <EmptyState title="No records match these filters" hint="Widen the dates or choose all hospitals." />
             ) : (
               <>
                 <Table caption={summary.title}>

@@ -7,12 +7,12 @@ export type FingerprintLine = {
 };
 
 /**
- * Content fingerprint of a revenue report: the same centre, period and normalised
+ * Content fingerprint of a revenue report: the same hospital, period and normalised
  * department x channel amounts always produce the same value, whatever the file is called,
  * how it was formatted, or in which row order the departments appear.
  */
 export function fingerprintReport(
-  centreId: string,
+  hospitalId: string,
   periodStart: string,
   periodEnd: string,
   lines: FingerprintLine[],
@@ -25,6 +25,6 @@ export function fingerprintReport(
       a: Object.entries(line.amounts).sort(([x], [y]) => x.localeCompare(y)),
     }));
   return createHash('sha256')
-    .update(JSON.stringify({ centreId, periodStart, periodEnd, lines: canonical }))
+    .update(JSON.stringify({ hospitalId, periodStart, periodEnd, lines: canonical }))
     .digest('hex');
 }

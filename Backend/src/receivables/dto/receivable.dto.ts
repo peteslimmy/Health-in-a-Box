@@ -33,7 +33,7 @@ export class ReceivableQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ enum: ReceivableStatus })
   @IsOptional()
@@ -68,7 +68,7 @@ export class AgeingQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ example: '2026-10-27', description: 'Defaults to today in Africa/Lagos' })
   @IsOptional()

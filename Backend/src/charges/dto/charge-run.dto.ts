@@ -17,7 +17,7 @@ export class CalculateChargeRunDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ example: '2026-09-01' })
   @IsOptional()
@@ -63,7 +63,7 @@ export class ChargeRunQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional({ enum: ChargeRunStatus })
   @IsOptional()

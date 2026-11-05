@@ -3,9 +3,9 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, ErrorNotice, Field, Input, Notice, PageHeader, Textarea } from '../components/ui';
 import { api } from '../lib/api';
-import type { Centre } from '../lib/types';
+import type { Hospital } from '../lib/types';
 
-export function CentreFormPage() {
+export function HospitalFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -22,7 +22,7 @@ export function CentreFormPage() {
 
   const create = useMutation({
     mutationFn: () =>
-      api<Centre>('/centres', {
+      api<Hospital>('/hospitals', {
         method: 'POST',
         body: {
           code: form.code.trim(),
@@ -36,9 +36,9 @@ export function CentreFormPage() {
           status: 'DRAFT',
         },
       }),
-    onSuccess: (centre) => {
-      void queryClient.invalidateQueries({ queryKey: ['centres'] });
-      navigate(`/centres/${centre.id}`);
+    onSuccess: (hospital) => {
+      void queryClient.invalidateQueries({ queryKey: ['hospitals'] });
+      navigate(`/hospitals/${hospital.id}`);
     },
   });
 
@@ -49,7 +49,7 @@ export function CentreFormPage() {
 
   return (
     <div>
-      <PageHeader title="New centre" subtitle="The centre is created as a draft. Add its departments, payment channels and charge rules, then activate it." />
+      <PageHeader title="New hospital" subtitle="The hospital is created as a draft. Add its departments, payment channels and charge rules, then activate it." />
       <Card>
         <form onSubmit={submit} className="grid max-w-3xl gap-4 sm:grid-cols-2">
           <Field label="Code" hint="Unique, e.g. HNB-LAG-001">{(id) => <Input id={id} required minLength={2} maxLength={20} value={form.code} onChange={set('code')} />}</Field>
@@ -64,10 +64,10 @@ export function CentreFormPage() {
           <div className="sm:col-span-2"><Field label="Notes">{(id) => <Textarea id={id} rows={3} value={form.notes} onChange={set('notes')} />}</Field></div>
           <div className="space-y-3 sm:col-span-2">
             <ErrorNotice error={create.error} />
-            <Notice tone="neutral">Rates and agreements are added after the centre is created, from the centre page.</Notice>
+            <Notice tone="neutral">Rates and agreements are added after the hospital is created, from the hospital page.</Notice>
             <div className="flex gap-2">
-              <Button type="submit" loading={create.isPending}>Create centre</Button>
-              <Button variant="secondary" onClick={() => navigate('/centres')}>Cancel</Button>
+              <Button type="submit" loading={create.isPending}>Create hospital</Button>
+              <Button variant="secondary" onClick={() => navigate('/hospitals')}>Cancel</Button>
             </div>
           </div>
         </form>

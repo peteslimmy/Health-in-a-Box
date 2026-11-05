@@ -1,8 +1,8 @@
 import { decryptSecret } from '../auth/mfa-crypto';
-import { allCentresUser } from '../testing/fixtures';
+import { allHospitalsUser } from '../testing/fixtures';
 import { PlatformService } from './platform.service';
 
-const owner = allCentresUser('owner', ['platform.manage']);
+const owner = allHospitalsUser('owner', ['platform.manage']);
 
 const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -288,7 +288,7 @@ describe('approved domains', () => {
 });
 
 describe('registered super admins', () => {
-  it('registers only Gmail addresses, with the super admin role on all centres', async () => {
+  it('registers only Gmail addresses, with the super admin role on all hospitals', async () => {
     const { service, users } = build();
     await expect(
       service.addSuperAdmin(owner, {

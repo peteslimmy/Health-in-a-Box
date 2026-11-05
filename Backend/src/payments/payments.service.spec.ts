@@ -1,22 +1,22 @@
 import { Decimal } from 'decimal.js';
-import { allCentresUser, D } from '../testing/fixtures';
+import { allHospitalsUser, D } from '../testing/fixtures';
 import { PaymentsService } from './payments.service';
 import { receivableStatusFor } from './receivable-status';
 
-const CENTRE = 'centre-1';
+const HOSPITAL = 'hospital-1';
 
 function paymentFixture(status: string, overrides: Record<string, unknown> = {}) {
   return {
     id: 'pay-1',
     organizationId: 'org-1',
-    centreId: CENTRE,
+    hospitalId: HOSPITAL,
     status,
     createdById: 'maker',
     amount: new Decimal('1000.00'),
     unallocatedAmount: new Decimal('1000.00'),
     receiptDate: D('2026-10-01'),
     reference: 'REF-1',
-    centre: { id: CENTRE, status: 'ACTIVE', timezone: 'Africa/Lagos' },
+    hospital: { id: HOSPITAL, status: 'ACTIVE', timezone: 'Africa/Lagos' },
     allocations: [],
     ...overrides,
   };
@@ -24,7 +24,7 @@ function paymentFixture(status: string, overrides: Record<string, unknown> = {})
 
 function build(
   payment: ReturnType<typeof paymentFixture>,
-  centre = { id: CENTRE, status: 'ACTIVE', timezone: 'Africa/Lagos' },
+  hospital = { id: HOSPITAL, status: 'ACTIVE', timezone: 'Africa/Lagos' },
 ) {
   const tx = {
     payment: {
@@ -37,7 +37,7 @@ function build(
     payment: {
       findFirst: jest.fn().mockResolvedValue(payment),
     },
-    centre: { findFirst: jest.fn().mockResolvedValue(centre) },
+    hospital: { findFirst: jest.fn().mockResolvedValue(hospital) },
     $transaction: jest.fn(async (arg: unknown) =>
       typeof arg === 'function' ? (arg as (t: unknown) => unknown)(tx) : Promise.all(arg as []),
     ),
@@ -46,8 +46,8 @@ function build(
   return { service: new PaymentsService(prisma as never, audit as never), prisma, tx, audit };
 }
 
-const maker = allCentresUser('maker');
-const checker = allCentresUser('checker');
+const maker = allHospitalsUser('maker');
+const checker = allHospitalsUser('checker');
 const code = (c: string) => ({ response: { code: c } });
 
 describe('receipt lifecycle (P-015) and maker-checker', () => {
@@ -96,12 +96,12 @@ describe('receipt lifecycle (P-015) and maker-checker', () => {
     ).rejects.toMatchObject(code('INVALID_PAYMENT_STATUS'));
   });
 
-  it('will not post a receipt for a suspended centre', async () => {
+  it('will not post a receipt for a suspended hospital', async () => {
     const payment = paymentFixture('APPROVED', {
-      centre: { id: CENTRE, status: 'SUSPENDED', timezone: 'Africa/Lagos' },
+      hospital: { id: HOSPITAL, status: 'SUSPENDED', timezone: 'Africa/Lagos' },
     });
     await expect(build(payment).service.post(checker, 'pay-1')).rejects.toMatchObject(
-      code('CENTRE_NOT_ACTIVE'),
+      code('HOSPITAL_NOT_ACTIVE'),
     );
   });
 
@@ -118,7 +118,7 @@ describe('receipt lifecycle (P-015) and maker-checker', () => {
 describe('receipt entry validation', () => {
   const dto = (extra: Record<string, unknown> = {}) =>
     ({
-      centreId: CENTRE,
+      hospitalId: HOSPITAL,
       receiptDate: '2026-10-01',
       amount: '250000.00',
       method: 'bank_transfer',
@@ -128,7 +128,7 @@ describe('receipt entry validation', () => {
 
   function buildCreate(existing: { reference?: unknown; similar?: unknown } = {}) {
     const ctx = build(paymentFixture('DRAFT'));
-    // 1st duplicate lookup = same reference, 2nd = same centre/date/amount
+    // 1st duplicate lookup = same reference, 2nd = same hospital/date/amount
     ctx.prisma.payment.findFirst = jest
       .fn()
       .mockResolvedValueOnce(existing.reference ?? null)
@@ -168,7 +168,7 @@ describe('receipt entry validation', () => {
     expect(tx.payment.create).not.toHaveBeenCalled();
   });
 
-  it('FR-AR-004: asks for confirmation when centre, date and amount match another receipt', async () => {
+  it('FR-AR-004: asks for confirmation when hospital, date and amount match another receipt', async () => {
     const { service, tx } = buildCreate({
       similar: { id: 'old', status: 'POSTED', reference: 'X' },
     });
@@ -184,13 +184,15 @@ describe('receipt entry validation', () => {
     ).resolves.toBeDefined();
   });
 
-  it('refuses a receipt for a draft centre', async () => {
+  it('refuses a receipt for a draft hospital', async () => {
     const ctx = build(paymentFixture('DRAFT'), {
-      id: CENTRE,
+      id: HOSPITAL,
       status: 'DRAFT',
       timezone: 'Africa/Lagos',
     });
-    await expect(ctx.service.create(maker, dto())).rejects.toMatchObject(code('CENTRE_NOT_ACTIVE'));
+    await expect(ctx.service.create(maker, dto())).rejects.toMatchObject(
+      code('HOSPITAL_NOT_ACTIVE'),
+    );
   });
 });
 

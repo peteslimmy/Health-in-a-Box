@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { formatMoney } from '../lib/format';
 import type { Page, Receivable } from '../lib/types';
-import { CentreSelect } from './CentreSelect';
+import { HospitalSelect } from './HospitalSelect';
 import { Button, ErrorNotice, Field, Input, Modal, Select, Textarea } from './ui';
 
 export const REASON_LABEL: Record<string, string> = {
@@ -16,7 +16,7 @@ export const REASON_LABEL: Record<string, string> = {
   OTHER: 'Other',
 };
 
-export type ReceivableTarget = { id: string; reference: string; balance: string; centreId: string };
+export type ReceivableTarget = { id: string; reference: string; balance: string; hospitalId: string };
 
 function useRefresh() {
   const queryClient = useQueryClient();
@@ -27,12 +27,12 @@ function useRefresh() {
   };
 }
 
-/** Picks one open receivable of a centre. */
-function ReceivablePicker({ centreId, value, onChange }: { centreId: string; value: string; onChange: (id: string, balance: string) => void }) {
+/** Picks one open receivable of a hospital. */
+function ReceivablePicker({ hospitalId, value, onChange }: { hospitalId: string; value: string; onChange: (id: string, balance: string) => void }) {
   const list = useQuery({
-    queryKey: ['receivables', 'picker', centreId],
-    queryFn: () => api<Page<Receivable>>('/receivables', { query: { centreId, openOnly: true, pageSize: 100 } }),
-    enabled: !!centreId,
+    queryKey: ['receivables', 'picker', hospitalId],
+    queryFn: () => api<Page<Receivable>>('/receivables', { query: { hospitalId, openOnly: true, pageSize: 100 } }),
+    enabled: !!hospitalId,
   });
   return (
     <Field label="Receivable">
@@ -41,10 +41,10 @@ function ReceivablePicker({ centreId, value, onChange }: { centreId: string; val
           id={id}
           required
           value={value}
-          disabled={!centreId}
+          disabled={!hospitalId}
           onChange={(event) => onChange(event.target.value, list.data?.items.find((r) => r.id === event.target.value)?.balance ?? '0')}
         >
-          <option value="">{centreId ? (list.isLoading ? 'Loading…' : 'Select a receivable…') : 'Choose a centre first'}</option>
+          <option value="">{hospitalId ? (list.isLoading ? 'Loading…' : 'Select a receivable…') : 'Choose a hospital first'}</option>
           {list.data?.items.map((r) => (
             <option key={r.id} value={r.id}>
               {r.reference} · balance {formatMoney(r.balance)}
@@ -57,10 +57,10 @@ function ReceivablePicker({ centreId, value, onChange }: { centreId: string; val
 }
 
 function useTarget(fixed?: ReceivableTarget) {
-  const [centreId, setCentreId] = useState(fixed?.centreId ?? '');
+  const [hospitalId, setHospitalId] = useState(fixed?.hospitalId ?? '');
   const [receivableId, setReceivableId] = useState(fixed?.id ?? '');
   const [balance, setBalance] = useState(fixed?.balance ?? '0');
-  return { centreId, receivableId, balance, setCentreId, setReceivableId, setBalance, fixed };
+  return { hospitalId, receivableId, balance, setHospitalId, setReceivableId, setBalance, fixed };
 }
 
 function TargetFields({ target }: { target: ReturnType<typeof useTarget> }) {
@@ -73,21 +73,21 @@ function TargetFields({ target }: { target: ReturnType<typeof useTarget> }) {
   }
   return (
     <>
-      <Field label="Centre">
+      <Field label="Hospital">
         {(id) => (
-          <CentreSelect
+          <HospitalSelect
             id={id}
             required
-            value={target.centreId}
+            value={target.hospitalId}
             onChange={(value) => {
-              target.setCentreId(value);
+              target.setHospitalId(value);
               target.setReceivableId('');
             }}
           />
         )}
       </Field>
       <ReceivablePicker
-        centreId={target.centreId}
+        hospitalId={target.hospitalId}
         value={target.receivableId}
         onChange={(id, balance) => {
           target.setReceivableId(id);
@@ -121,7 +121,7 @@ export function AdjustmentDialog({ receivable, onClose }: { receivable?: Receiva
       <form onSubmit={submit} className="space-y-3">
         <TargetFields target={target} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Type" hint={type === 'CREDIT' ? 'Reduces what the centre owes' : 'Increases what the centre owes'}>
+          <Field label="Type" hint={type === 'CREDIT' ? 'Reduces what the hospital owes' : 'Increases what the hospital owes'}>
             {(id) => (
               <Select id={id} value={type} onChange={(event) => setType(event.target.value as 'CREDIT' | 'DEBIT')}>
                 <option value="CREDIT">Credit (reduce)</option>
@@ -186,10 +186,10 @@ export function DisputeDialog({ receivable, onClose }: { receivable?: Receivable
         className="space-y-3"
       >
         <TargetFields target={target} />
-        <Field label="Amount in dispute (₦)" hint="The part of the balance the centre challenges">
+        <Field label="Amount in dispute (₦)" hint="The part of the balance the hospital challenges">
           {(id) => <Input id={id} required inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />}
         </Field>
-        <Field label="What the centre says" hint="At least 10 characters">
+        <Field label="What the hospital says" hint="At least 10 characters">
           {(id) => <Textarea id={id} required minLength={10} maxLength={1000} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />}
         </Field>
         <ErrorNotice error={save.error} />
@@ -209,13 +209,13 @@ export function DisputeDialog({ receivable, onClose }: { receivable?: Receivable
 
 export function OpeningBalanceDialog({ onClose }: { onClose: () => void }) {
   const refresh = useRefresh();
-  const [centreId, setCentreId] = useState('');
+  const [hospitalId, setHospitalId] = useState('');
   const [asAt, setAsAt] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [sourceNote, setSourceNote] = useState('');
   const save = useMutation({
-    mutationFn: () => api('/opening-balances', { method: 'POST', body: { centreId, asAt, amount, dueDate, sourceNote } }),
+    mutationFn: () => api('/opening-balances', { method: 'POST', body: { hospitalId, asAt, amount, dueDate, sourceNote } }),
     onSuccess: () => {
       refresh();
       onClose();
@@ -230,9 +230,9 @@ export function OpeningBalanceDialog({ onClose }: { onClose: () => void }) {
         }}
         className="space-y-3"
       >
-        <Field label="Centre">{(id) => <CentreSelect id={id} required value={centreId} onChange={setCentreId} />}</Field>
+        <Field label="Hospital">{(id) => <HospitalSelect id={id} required value={hospitalId} onChange={setHospitalId} />}</Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Stated as at" hint="Must be before the platform's first charge for this centre">
+          <Field label="Stated as at" hint="Must be before the platform's first charge for this hospital">
             {(id) => <Input id={id} type="date" required value={asAt} onChange={(event) => setAsAt(event.target.value)} />}
           </Field>
           <Field label="Due date">
@@ -249,7 +249,7 @@ export function OpeningBalanceDialog({ onClose }: { onClose: () => void }) {
         </Field>
         <ErrorNotice error={save.error} />
         <div className="flex gap-2">
-          <Button type="submit" loading={save.isPending} disabled={!centreId || !asAt || !dueDate || !amount || sourceNote.trim().length < 10}>
+          <Button type="submit" loading={save.isPending} disabled={!hospitalId || !asAt || !dueDate || !amount || sourceNote.trim().length < 10}>
             Propose
           </Button>
           <Button variant="secondary" onClick={onClose}>

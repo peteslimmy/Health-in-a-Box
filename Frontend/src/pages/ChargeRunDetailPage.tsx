@@ -34,7 +34,7 @@ export function ChargeRunDetailPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={`Charge run — ${r.centre.name}`}
+        title={`Charge run — ${r.hospital.name}`}
         subtitle={<><StatusBadge status={r.status} /> {formatDate(r.periodStart)} – {formatDate(r.periodEnd)}</>}
         actions={
           <>

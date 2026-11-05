@@ -17,7 +17,7 @@ type Amounts = {
   amountPaid: Decimal.Value;
 };
 
-/** What the centre owes for the item before any payment: the charge plus net adjustments. */
+/** What the hospital owes for the item before any payment: the charge plus net adjustments. */
 export function totalDue(receivable: Pick<Amounts, 'originalAmount' | 'adjustmentTotal'>): Decimal {
   return new Decimal(receivable.originalAmount).plus(receivable.adjustmentTotal);
 }

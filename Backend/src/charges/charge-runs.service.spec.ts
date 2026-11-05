@@ -1,9 +1,9 @@
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
-import { allCentresUser, D } from '../testing/fixtures';
+import { allHospitalsUser, D } from '../testing/fixtures';
 import { ChargeRunsService } from './charge-runs.service';
 
-const CENTRE = 'centre-1';
+const HOSPITAL = 'hospital-1';
 
 const channels = [
   { id: 'ch-cash', code: 'CASH', name: 'Cash', aliases: [] },
@@ -34,7 +34,7 @@ function report(
   return {
     id,
     organizationId: 'org-1',
-    centreId: CENTRE,
+    hospitalId: HOSPITAL,
     periodStart: D(start),
     periodEnd: D(end),
     reportDate: D(end),
@@ -55,7 +55,7 @@ function rule(
 ) {
   return {
     id,
-    centreId: CENTRE,
+    hospitalId: HOSPITAL,
     name: `rule-${id}`,
     basis: 'PERCENTAGE',
     rate: new Decimal(rate),
@@ -76,7 +76,7 @@ function build(options: { reports: unknown[]; rules: unknown[] }) {
     chargeRun: {
       create: jest.fn(async ({ data }) => ({
         id: 'run-new',
-        centreId: CENTRE,
+        hospitalId: HOSPITAL,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
         status: 'DRAFT',
@@ -91,11 +91,11 @@ function build(options: { reports: unknown[]; rules: unknown[] }) {
     paymentChannel: { findMany: jest.fn().mockResolvedValue(channels) },
     chargeRule: { findMany: jest.fn().mockResolvedValue(options.rules) },
     chargeLine: { findFirst: jest.fn().mockResolvedValue(null) },
-    centre: {
+    hospital: {
       findUnique: jest.fn().mockResolvedValue({
-        id: CENTRE,
+        id: HOSPITAL,
         code: 'HNB-1',
-        name: 'Test Centre',
+        name: 'Test Hospital',
         status: 'ACTIVE',
         currency: 'NGN',
         paymentTermsDays: 30,
@@ -111,8 +111,8 @@ function build(options: { reports: unknown[]; rules: unknown[] }) {
   return { service, prisma, audit, tx };
 }
 
-const maker = allCentresUser('maker');
-const reportIds = (...ids: string[]) => ({ centreId: CENTRE, reportIds: ids });
+const maker = allHospitalsUser('maker');
+const reportIds = (...ids: string[]) => ({ hospitalId: HOSPITAL, reportIds: ids });
 
 describe('charge calculation', () => {
   it('charges a department default rule on the reported total, half-up to 2 dp', async () => {
@@ -279,15 +279,15 @@ describe('charge calculation', () => {
   });
 
   it.each(['DRAFT', 'SUSPENDED', 'ARCHIVED'])(
-    'FR-CEN-009: will not create a charge run for a %s centre',
+    'FR-CEN-009: will not create a charge run for a %s hospital',
     async (status) => {
       const { service, prisma, tx } = build({
         reports: [report('rep-1', '2026-09-01', '2026-09-30')],
         rules: [rule('r1', '5', '2026-01-01', null)],
       });
-      prisma.centre.findUnique.mockResolvedValue({ status });
+      prisma.hospital.findUnique.mockResolvedValue({ status });
       await expect(service.create(maker, reportIds('rep-1'))).rejects.toMatchObject({
-        response: { code: 'CENTRE_NOT_ACTIVE' },
+        response: { code: 'HOSPITAL_NOT_ACTIVE' },
       });
       expect(tx.chargeRun.create).not.toHaveBeenCalled();
     },
@@ -305,27 +305,27 @@ describe('charge calculation', () => {
 });
 
 describe('charge run approval and posting', () => {
-  const checker = allCentresUser('checker');
+  const checker = allHospitalsUser('checker');
 
   function runFixture(
     status: string,
     createdById = 'maker',
-    centreOverrides: Record<string, unknown> = {},
+    hospitalOverrides: Record<string, unknown> = {},
   ) {
     return {
       id: 'run-1',
-      centreId: CENTRE,
+      hospitalId: HOSPITAL,
       createdById,
       status,
       periodStart: D('2026-09-01'),
       periodEnd: D('2026-09-30'),
-      centre: {
-        id: CENTRE,
+      hospital: {
+        id: HOSPITAL,
         code: 'HNB-1',
         paymentTermsDays: 30,
         status: 'ACTIVE',
         timezone: 'Africa/Lagos',
-        ...centreOverrides,
+        ...hospitalOverrides,
       },
       lines: [
         {
@@ -353,7 +353,7 @@ describe('charge run approval and posting', () => {
   function buildRun(
     status: string,
     createdById = 'maker',
-    centreOverrides: Record<string, unknown> = {},
+    hospitalOverrides: Record<string, unknown> = {},
   ) {
     const tx = {
       chargeRun: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -362,7 +362,7 @@ describe('charge run approval and posting', () => {
     };
     const prisma = {
       chargeRun: {
-        findFirst: jest.fn().mockResolvedValue(runFixture(status, createdById, centreOverrides)),
+        findFirst: jest.fn().mockResolvedValue(runFixture(status, createdById, hospitalOverrides)),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       $transaction: jest.fn(async (arg: unknown) =>
@@ -407,7 +407,7 @@ describe('charge run approval and posting', () => {
       expect(new Decimal(arg.data.credit.toString()).isZero()).toBe(true);
     }
 
-    // D-006: due date is the posting date plus the centre's payment-terms days.
+    // D-006: due date is the posting date plus the hospital's payment-terms days.
     const due: Date = tx.receivable.create.mock.calls[0][0].data.dueDate;
     const expected = new Date();
     expected.setUTCDate(expected.getUTCDate() + 30);
@@ -426,15 +426,15 @@ describe('charge run approval and posting', () => {
     expect(tx.receivable.create).not.toHaveBeenCalled();
   });
 
-  it('FR-CEN-009: will not post charges for a suspended centre', async () => {
+  it('FR-CEN-009: will not post charges for a suspended hospital', async () => {
     const { service, tx } = buildRun('APPROVED', 'maker', { status: 'SUSPENDED' });
     await expect(service.post(checker, 'run-1')).rejects.toMatchObject({
-      response: { code: 'CENTRE_NOT_ACTIVE' },
+      response: { code: 'HOSPITAL_NOT_ACTIVE' },
     });
     expect(tx.receivable.create).not.toHaveBeenCalled();
   });
 
-  describe('D-016: due dates follow the centre business day, not UTC', () => {
+  describe('D-016: due dates follow the hospital business day, not UTC', () => {
     afterEach(() => jest.useRealTimers());
 
     // 23:30 UTC on 27 Oct is already 00:30 on 28 Oct in Lagos (UTC+1).
@@ -449,7 +449,7 @@ describe('charge run approval and posting', () => {
       expect(tx.receivable.create.mock.calls[0][0].data.reference).toContain('-2026-10-');
     });
 
-    it('uses the centre time zone, so a UTC centre keeps the UTC date', async () => {
+    it('uses the hospital time zone, so a UTC hospital keeps the UTC date', async () => {
       jest.useFakeTimers({ now: lateEvening });
       const { service, tx } = buildRun('APPROVED', 'maker', { timezone: 'UTC' });
       await service.post(checker, 'run-1');

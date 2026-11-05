@@ -51,7 +51,7 @@ export function WorkQueuePage() {
                   <span className="w-44 shrink-0 font-medium text-slate-800">{item.kind}</span>
                   <span className="min-w-0 flex-1 text-slate-700">
                     <span className="font-medium">{item.action}:</span> {item.title}
-                    {item.centre && <span className="block text-xs text-slate-500">{item.centre}</span>}
+                    {item.hospital && <span className="block text-xs text-slate-500">{item.hospital}</span>}
                   </span>
                   <span className="text-xs tabular-nums text-slate-500">
                     {item.ageDays === 0 ? 'today' : `${item.ageDays} day${item.ageDays === 1 ? '' : 's'}`}

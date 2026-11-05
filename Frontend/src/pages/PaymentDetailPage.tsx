@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useUser } from '../auth/AuthContext';
 import { Button, Card, EmptyState, ErrorNotice, Field, KeyValue, Loading, Modal, Notice, PageHeader, StatusBadge, Table, Td, Textarea, Th, Input, cx } from '../components/ui';
 import { api, newIdempotencyKey } from '../lib/api';
-import { centreLabel, addMoney, compareMoney, formatDate, formatDateTime, formatMoney, isValidAmount, subtractMoney } from '../lib/format';
+import { hospitalLabel, addMoney, compareMoney, formatDate, formatDateTime, formatMoney, isValidAmount, subtractMoney } from '../lib/format';
 import { can } from '../lib/permissions';
 import type { AllocationPreview, PaymentDetail, PaymentStatus } from '../lib/types';
 
@@ -98,9 +98,9 @@ function AllocateDialog({ payment, onClose, onDone }: { payment: PaymentDetail; 
         </Notice>
         {preview.isLoading && <Loading />}
         <ErrorNotice error={preview.error} />
-        {preview.data && rows.length === 0 && <EmptyState title="This centre has no open receivables" hint="The cash stays unallocated until a charge is posted." />}
+        {preview.data && rows.length === 0 && <EmptyState title="This hospital has no open receivables" hint="The cash stays unallocated until a charge is posted." />}
         {rows.length > 0 && (
-          <Table caption="Open receivables for this centre">
+          <Table caption="Open receivables for this hospital">
             <thead><tr><Th>Receivable</Th><Th>Due</Th><Th numeric>Balance</Th><Th numeric>Allocate</Th></tr></thead>
             <tbody>
               {rows.map((receivable) => (
@@ -175,7 +175,7 @@ export function PaymentDetailPage() {
     <div className="space-y-5">
       <PageHeader
         title={`Receipt ${p.reference ?? p.id.slice(0, 8)}`}
-        subtitle={<><StatusBadge status={p.status} /> {centreLabel(p.centre)}</>}
+        subtitle={<><StatusBadge status={p.status} /> {hospitalLabel(p.hospital)}</>}
         actions={
           <>
             {p.status === 'DRAFT' && isOwner && can(user, 'payments.create') && <Button loading={act.isPending} onClick={() => act.mutate('submit')}>Submit for approval</Button>}

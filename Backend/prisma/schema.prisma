@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum CentreStatus {
+enum HospitalStatus {
   DRAFT
   ACTIVE
   SUSPENDED
@@ -80,7 +80,7 @@ model Organization {
   updatedAt       DateTime           @updatedAt
   users           User[]
   roles           Role[]
-  centres         Centre[]
+  hospitals         Hospital[]
   refreshSessions RefreshSession[]
   importBatches   ImportBatch[]
   revenueReports  RevenueReport[]
@@ -93,7 +93,7 @@ model Organization {
   adjustments     Adjustment[]
   disputes        Dispute[]
   openingBalances OpeningBalance[]
-  setupDrafts     CentreSetupDraft[]
+  setupDrafts     HospitalSetupDraft[]
   approvedDomains ApprovedDomain[]
   platformSetting PlatformSetting?
   brandingAssets  BrandingAsset[]
@@ -116,7 +116,7 @@ model User {
   mfaLastStep             Int?
   mfaFailedAttempts       Int                  @default(0)
   mfaLockedUntil          DateTime?
-  setupDrafts             CentreSetupDraft[]
+  setupDrafts             HospitalSetupDraft[]
   mfaRecoveryCodes        MfaRecoveryCode[]
   lastLoginAt             DateTime?
   createdAt               DateTime             @default(now())
@@ -160,9 +160,9 @@ enum SetupDraftStatus {
   CANCELLED
 }
 
-/// A centre being set up from an uploaded report. The file and what was read from it are kept so
-/// the wizard can be resumed and the original report can be imported once the centre exists.
-model CentreSetupDraft {
+/// A hospital being set up from an uploaded report. The file and what was read from it are kept so
+/// the wizard can be resumed and the original report can be imported once the hospital exists.
+model HospitalSetupDraft {
   id             String           @id @default(uuid()) @db.Uuid
   organizationId String           @db.Uuid
   createdById    String           @db.Uuid
@@ -172,7 +172,7 @@ model CentreSetupDraft {
   contentType    String
   analysisJson   Json
   status         SetupDraftStatus @default(OPEN)
-  centreId       String?          @db.Uuid
+  hospitalId       String?          @db.Uuid
   createdAt      DateTime         @default(now())
   completedAt    DateTime?
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -283,15 +283,15 @@ model UserRoleAssignment {
   organizationId String   @db.Uuid
   userId         String   @db.Uuid
   roleId         String   @db.Uuid
-  centreId       String?  @db.Uuid
+  hospitalId       String?  @db.Uuid
   createdAt      DateTime @default(now())
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role           Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  centre         Centre?  @relation(fields: [centreId], references: [id], onDelete: Cascade)
+  hospital         Hospital?  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId])
   @@index([roleId])
-  @@index([centreId])
+  @@index([hospitalId])
 }
 
 model RefreshSession {
@@ -311,7 +311,7 @@ model RefreshSession {
   @@index([organizationId, userId, revokedAt])
 }
 
-model Centre {
+model Hospital {
   id               String                @id @default(uuid()) @db.Uuid
   organizationId   String                @db.Uuid
   code             String
@@ -319,7 +319,7 @@ model Centre {
   address          String?
   contactName      String?
   contactEmail     String?
-  status           CentreStatus          @default(DRAFT)
+  status           HospitalStatus          @default(DRAFT)
   timezone         String                @default("Africa/Lagos")
   currency         String                @default("NGN")
   paymentTermsDays Int                   @default(30)
@@ -351,19 +351,19 @@ model Centre {
 
 model Department {
   id          String            @id @default(uuid()) @db.Uuid
-  centreId    String            @db.Uuid
+  hospitalId    String            @db.Uuid
   code        String
   name        String
   isActive    Boolean           @default(true)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
-  centre      Centre            @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital      Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   aliases     DepartmentAlias[]
   rules       ChargeRule[]
   lines       RevenueLine[]
   chargeLines ChargeLine[]
 
-  @@unique([centreId, code])
+  @@unique([hospitalId, code])
 }
 
 model DepartmentAlias {
@@ -377,18 +377,18 @@ model DepartmentAlias {
 
 model PaymentChannel {
   id          String                @id @default(uuid()) @db.Uuid
-  centreId    String                @db.Uuid
+  hospitalId    String                @db.Uuid
   code        String
   name        String
   isActive    Boolean               @default(true)
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
-  centre      Centre                @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital      Hospital                @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   aliases     PaymentChannelAlias[]
   chargeRules ChargeRule[]
   chargeLines ChargeLine[]
 
-  @@unique([centreId, code])
+  @@unique([hospitalId, code])
 }
 
 model PaymentChannelAlias {
@@ -402,7 +402,7 @@ model PaymentChannelAlias {
 
 model CommercialAgreement {
   id            String       @id @default(uuid()) @db.Uuid
-  centreId      String       @db.Uuid
+  hospitalId      String       @db.Uuid
   name          String
   effectiveFrom DateTime     @db.Date
   effectiveTo   DateTime?    @db.Date
@@ -410,13 +410,13 @@ model CommercialAgreement {
   notes         String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
-  centre        Centre       @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital        Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   chargeRules   ChargeRule[]
 }
 
 model ChargeRule {
   id               String               @id @default(uuid()) @db.Uuid
-  centreId         String               @db.Uuid
+  hospitalId         String               @db.Uuid
   agreementId      String?              @db.Uuid
   departmentId     String?              @db.Uuid
   paymentChannelId String?              @db.Uuid
@@ -430,14 +430,14 @@ model ChargeRule {
   isActive         Boolean              @default(true)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
-  centre           Centre               @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital           Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   agreement        CommercialAgreement? @relation(fields: [agreementId], references: [id], onDelete: Restrict)
   department       Department?          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   paymentChannel   PaymentChannel?      @relation(fields: [paymentChannelId], references: [id], onDelete: Restrict)
   chargeLines      ChargeLine[]
   isExempt         Boolean              @default(false)
 
-  @@index([centreId, effectiveFrom])
+  @@index([hospitalId, effectiveFrom])
   @@index([departmentId])
   @@index([paymentChannelId])
 }
@@ -445,7 +445,7 @@ model ChargeRule {
 model ImportBatch {
   id                 String         @id @default(uuid()) @db.Uuid
   organizationId     String         @db.Uuid
-  centreId           String         @db.Uuid
+  hospitalId           String         @db.Uuid
   kind               ImportKind     @default(REVENUE_REPORT)
   status             ImportStatus   @default(DRAFT)
   fileName           String?
@@ -466,19 +466,19 @@ model ImportBatch {
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre             Centre         @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital             Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   createdBy          User           @relation(fields: [createdById], references: [id])
   committedReport    RevenueReport? @relation("CommittedReport", fields: [committedReportId], references: [id], onDelete: Restrict)
   sourceReport       RevenueReport? @relation("ImportSource")
 
-  @@index([organizationId, centreId, status])
+  @@index([organizationId, hospitalId, status])
   @@index([fileHash])
 }
 
 model RevenueReport {
   id                   String        @id @default(uuid()) @db.Uuid
   organizationId       String        @db.Uuid
-  centreId             String        @db.Uuid
+  hospitalId             String        @db.Uuid
   periodStart          DateTime      @db.Date
   periodEnd            DateTime      @db.Date
   reportDate           DateTime      @db.Date
@@ -498,14 +498,14 @@ model RevenueReport {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre               Centre        @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital               Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   createdBy            User          @relation("ReportCreator", fields: [createdById], references: [id])
   varianceApprovedBy   User?         @relation("ReportVarianceApprover", fields: [varianceApprovedById], references: [id], onDelete: Restrict)
   importBatch          ImportBatch?  @relation("ImportSource", fields: [importBatchId], references: [id], onDelete: Restrict)
   committedBatch       ImportBatch?  @relation("CommittedReport")
   lines                RevenueLine[]
 
-  @@index([organizationId, centreId, periodEnd])
+  @@index([organizationId, hospitalId, periodEnd])
 }
 
 model RevenueLine {
@@ -527,7 +527,7 @@ model RevenueLine {
 model ChargeRun {
   id             String          @id @default(uuid()) @db.Uuid
   organizationId String          @db.Uuid
-  centreId       String          @db.Uuid
+  hospitalId       String          @db.Uuid
   periodStart    DateTime        @db.Date
   periodEnd      DateTime        @db.Date
   asOf           DateTime        @db.Date
@@ -543,13 +543,13 @@ model ChargeRun {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre         Centre          @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital         Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   createdBy      User            @relation("ChargeCreator", fields: [createdById], references: [id])
   approvedBy     User?           @relation("ChargeApprover", fields: [approvedById], references: [id])
   lines          ChargeLine[]
   receivable     Receivable?
 
-  @@index([organizationId, centreId, status])
+  @@index([organizationId, hospitalId, status])
 }
 
 model ChargeLine {
@@ -579,7 +579,7 @@ model ChargeLine {
 model Receivable {
   id              String              @id @default(uuid()) @db.Uuid
   organizationId  String              @db.Uuid
-  centreId        String              @db.Uuid
+  hospitalId        String              @db.Uuid
   chargeLineId    String?             @unique @db.Uuid
   chargeRunId     String?             @unique @db.Uuid
   reference       String              @unique
@@ -592,7 +592,7 @@ model Receivable {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre          Centre              @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital          Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   chargeLine      ChargeLine?         @relation(fields: [chargeLineId], references: [id], onDelete: Restrict)
   chargeRun       ChargeRun?          @relation(fields: [chargeRunId], references: [id], onDelete: Restrict)
   ledgerEntries   LedgerEntry[]
@@ -602,13 +602,13 @@ model Receivable {
   disputes        Dispute[]
   openingBalance  OpeningBalance?
 
-  @@index([organizationId, centreId, status, dueDate])
+  @@index([organizationId, hospitalId, status, dueDate])
 }
 
 model LedgerEntry {
   id             String          @id @default(uuid()) @db.Uuid
   organizationId String          @db.Uuid
-  centreId       String          @db.Uuid
+  hospitalId       String          @db.Uuid
   receivableId   String          @db.Uuid
   type           LedgerEntryType
   debit          Decimal         @default(0) @db.Decimal(18, 2)
@@ -620,18 +620,18 @@ model LedgerEntry {
   sourceId       String?         @db.Uuid
   createdAt      DateTime        @default(now())
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre         Centre          @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital         Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   receivable     Receivable      @relation(fields: [receivableId], references: [id], onDelete: Restrict)
   createdBy      User            @relation("LedgerCreator", fields: [createdById], references: [id])
 
-  @@index([organizationId, centreId, occurredAt])
+  @@index([organizationId, hospitalId, occurredAt])
   @@index([receivableId])
 }
 
 model Payment {
   id                String              @id @default(uuid()) @db.Uuid
   organizationId    String              @db.Uuid
-  centreId          String              @db.Uuid
+  hospitalId          String              @db.Uuid
   receiptDate       DateTime            @db.Date
   amount            Decimal             @db.Decimal(18, 2)
   unallocatedAmount Decimal             @db.Decimal(18, 2)
@@ -655,12 +655,12 @@ model Payment {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre            Centre              @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital            Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   createdBy         User                @relation("PaymentCreator", fields: [createdById], references: [id])
   allocations       PaymentAllocation[]
 
-  @@index([organizationId, centreId, receiptDate])
-  @@index([organizationId, centreId, status])
+  @@index([organizationId, hospitalId, receiptDate])
+  @@index([organizationId, hospitalId, status])
   @@index([reference])
 }
 
@@ -684,7 +684,7 @@ model PaymentAllocation {
 model AuditEvent {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @db.Uuid
-  centreId       String?      @db.Uuid
+  hospitalId       String?      @db.Uuid
   actorId        String?      @db.Uuid
   action         String
   targetType     String
@@ -695,11 +695,11 @@ model AuditEvent {
   correlationId  String?
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre         Centre?      @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital         Hospital?      @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   actor          User?        @relation("ActorAudit", fields: [actorId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, createdAt])
-  @@index([centreId, createdAt])
+  @@index([hospitalId, createdAt])
   @@index([targetType, targetId])
 }
 
@@ -739,7 +739,7 @@ enum DisputeStatus {
 model Adjustment {
   id             String         @id @default(uuid()) @db.Uuid
   organizationId String         @db.Uuid
-  centreId       String         @db.Uuid
+  hospitalId       String         @db.Uuid
   receivableId   String         @db.Uuid
   type           AdjustmentType
   amount         Decimal        @db.Decimal(18, 2)
@@ -753,20 +753,20 @@ model Adjustment {
   decisionNote   String?
   disputeId      String?        @db.Uuid
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre         Centre         @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital         Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   receivable     Receivable     @relation(fields: [receivableId], references: [id], onDelete: Restrict)
   createdBy      User           @relation("AdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
   decidedBy      User?          @relation("AdjustmentDecider", fields: [decidedById], references: [id], onDelete: Restrict)
 
-  @@index([organizationId, centreId, status])
+  @@index([organizationId, hospitalId, status])
   @@index([receivableId])
 }
 
-/// A centre's challenge to part of a receivable. While open, the receivable is flagged DISPUTED.
+/// A hospital's challenge to part of a receivable. While open, the receivable is flagged DISPUTED.
 model Dispute {
   id             String        @id @default(uuid()) @db.Uuid
   organizationId String        @db.Uuid
-  centreId       String        @db.Uuid
+  hospitalId       String        @db.Uuid
   receivableId   String        @db.Uuid
   amount         Decimal       @db.Decimal(18, 2)
   reason         String
@@ -778,21 +778,21 @@ model Dispute {
   resolutionNote String?
   adjustmentId   String?       @db.Uuid
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre         Centre        @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital         Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   receivable     Receivable    @relation(fields: [receivableId], references: [id], onDelete: Restrict)
   raisedBy       User          @relation("DisputeRaiser", fields: [raisedById], references: [id], onDelete: Restrict)
   resolvedBy     User?         @relation("DisputeResolver", fields: [resolvedById], references: [id], onDelete: Restrict)
 
-  @@index([organizationId, centreId, status])
+  @@index([organizationId, hospitalId, status])
   @@index([receivableId])
 }
 
-/// What a centre already owed before the platform: approved into one receivable, never overlapping
+/// What a hospital already owed before the platform: approved into one receivable, never overlapping
 /// periods the platform has charged itself.
 model OpeningBalance {
   id             String         @id @default(uuid()) @db.Uuid
   organizationId String         @db.Uuid
-  centreId       String         @db.Uuid
+  hospitalId       String         @db.Uuid
   asAt           DateTime       @db.Date
   amount         Decimal        @db.Decimal(18, 2)
   dueDate        DateTime       @db.Date
@@ -805,10 +805,10 @@ model OpeningBalance {
   decidedAt      DateTime?
   decisionNote   String?
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  centre         Centre         @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  hospital         Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
   receivable     Receivable?    @relation(fields: [receivableId], references: [id], onDelete: Restrict)
   createdBy      User           @relation("OpeningCreator", fields: [createdById], references: [id], onDelete: Restrict)
   decidedBy      User?          @relation("OpeningDecider", fields: [decidedById], references: [id], onDelete: Restrict)
 
-  @@index([organizationId, centreId, status])
+  @@index([organizationId, hospitalId, status])
 }

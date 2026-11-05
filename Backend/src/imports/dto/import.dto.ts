@@ -12,7 +12,7 @@ import {
 export class UploadImportDto {
   @ApiProperty()
   @IsUUID()
-  centreId!: string;
+  hospitalId!: string;
 
   @ApiPropertyOptional({
     example: '2026-09-01',
@@ -33,7 +33,8 @@ export class UploadImportDto {
   reportDate?: string;
 
   @ApiPropertyOptional({
-    description: 'Add departments and channels found in the file that the centre does not have yet',
+    description:
+      'Add departments and channels found in the file that the hospital does not have yet',
   })
   @IsOptional()
   @IsIn(['true', 'false'])
@@ -76,7 +77,7 @@ export class ImportQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  centreId?: string;
+  hospitalId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
