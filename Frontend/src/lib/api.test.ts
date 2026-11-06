@@ -87,10 +87,12 @@ describe('api client', () => {
   it('returns undefined for 204 and a blob when asked', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     expect(await api('/auth/logout', { method: 'POST' })).toBeUndefined();
-    fetchMock.mockResolvedValueOnce(new Response('a,b', { status: 200 }));
-    const blob = await api<Blob>('/imports/template', { blob: true });
-    expect(blob).toBeInstanceOf(Blob);
-    expect(blob.size).toBe(3);
+    fetchMock.mockResolvedValueOnce(new Response('a,b', { status: 200, headers: { 'Content-Type': 'text/plain' } }));
+    const blob = await api('/imports/template', { blob: true });
+    // Use property checks instead of instanceof to avoid cross-realm issues in jsdom
+    expect(blob).toHaveProperty('size', 3);
+    expect(blob.type).toBe('text/plain');
+    expect(blob).toHaveProperty('slice');
   });
 
   it('buildQuery skips empty values', () => {
