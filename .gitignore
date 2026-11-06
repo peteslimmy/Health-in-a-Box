@@ -33,4 +33,8 @@ Backend/prisma/*.db
 backups-dev/
 
 # Node lock files
-package-lock.json
+# Root lockfile is kept separately from workspace lockfiles
+# package-lock.json
+# Workspace-specific lockfiles (used by CI)
+!Backend/package-lock.json
+!Frontend/package-lock.json
